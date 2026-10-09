@@ -1,0 +1,68 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  AWS_REGION: us-east-1
+  TF_DIR: environments/staging
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+      - name: terraform init (sin backend)
+        run: terraform -chdir=${{ env.TF_DIR }} init -backend=false
+      - name: terraform validate
+        run: terraform -chdir=${{ env.TF_DIR }} validate
+
+  plan:
+    name: plan
+    needs: validate
+    # Requiere configurar la variable AWS_ROLE_ARN (OIDC) en Settings > Variables
+    if: vars.AWS_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: terraform -chdir=${{ env.TF_DIR }} init
+      - name: terraform plan
+        run: terraform -chdir=${{ env.TF_DIR }} plan -no-color -out=tfplan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_DIR }}/tfplan
+
+  apply:
+    name: apply
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # El environment "staging" debe tener revisores requeridos (aprobación manual)
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: terraform -chdir=${{ env.TF_DIR }} init
+      - run: terraform -chdir=${{ env.TF_DIR }} apply -auto-approve
