@@ -33,6 +33,19 @@ resource "aws_vpc_security_group_ingress_rule" "from_nodes" {
   tags = var.tags
 }
 
+# Grupo de parámetros propio (el default.* de AWS no se puede modificar después).
+resource "aws_elasticache_parameter_group" "this" {
+  name        = "${var.name}-${var.engine}"
+  family      = var.engine == "valkey" ? "valkey7" : "redis7"
+  description = "Parametros de la cache de Solventa"
+
+  tags = var.tags
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "aws_elasticache_replication_group" "this" {
   replication_group_id = var.name
   description          = "Cache de Solventa (staging)"
@@ -41,7 +54,7 @@ resource "aws_elasticache_replication_group" "this" {
   engine_version       = var.engine_version
   node_type            = var.node_type
   port                 = 6379
-  parameter_group_name = var.engine == "valkey" ? "default.valkey7" : "default.redis7"
+  parameter_group_name = aws_elasticache_parameter_group.this.name
 
   num_cache_clusters          = 1 + var.replicas
   preferred_cache_cluster_azs = slice(var.azs, 0, min(1 + var.replicas, length(var.azs)))
