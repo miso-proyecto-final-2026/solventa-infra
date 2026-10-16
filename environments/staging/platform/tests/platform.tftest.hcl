@@ -134,6 +134,11 @@ run "platform_composition_follows_the_contract" {
   }
 
   assert {
+    condition     = output.kyc_evidencias_bucket == "solventa-staging-kyc-evidencias-123456789012"
+    error_message = "The KYC evidence bucket must be named solventa-<env>-kyc-evidencias-<account>."
+  }
+
+  assert {
     condition     = output.registry_url == "123456789012.dkr.ecr.us-east-1.amazonaws.com"
     error_message = "registry_url must be the account ECR registry."
   }

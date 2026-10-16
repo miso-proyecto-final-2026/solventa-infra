@@ -74,3 +74,8 @@ output "eso_pod_identity_role_arn" {
   description = "Rol de Pod Identity de External Secrets Operator."
   value       = module.eks.eso_pod_identity_role_arn
 }
+
+output "kyc_evidencias_bucket" {
+  description = "Bucket de evidencias KYC (solo referencia)."
+  value       = module.kyc_evidencias.bucket_name
+}
