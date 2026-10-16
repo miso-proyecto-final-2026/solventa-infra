@@ -1,0 +1,13 @@
+# rule: RULE schema-isolation
+# tests: modules/db-access
+--- a/modules/db-access/templates/access.sql.tftpl
++++ b/modules/db-access/templates/access.sql.tftpl
+@@ -92,7 +92,7 @@
+ REVOKE ALL ON SCHEMA public FROM PUBLIC;
+ %{ for s in services ~}
+ %{ for sc in revoke_schemas ~}
+-%{ if lookup(schema_owner, sc, "") != s.role ~}
++%{ if false ~}
+ REVOKE ALL ON SCHEMA "${sc}" FROM "${s.role}";
+ %{ endif ~}
+ %{ endfor ~}

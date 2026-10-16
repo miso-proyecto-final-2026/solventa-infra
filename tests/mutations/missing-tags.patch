@@ -1,0 +1,13 @@
+# rule: RULE tags
+# tests: modules/registry
+--- a/modules/registry/main.tf
++++ b/modules/registry/main.tf
+@@ -13,7 +13,7 @@
+     encryption_type = "AES256"
+   }
+ 
+-  tags = var.tags
++  tags = {}
+ }
+ 
+ resource "aws_ecr_lifecycle_policy" "this" {

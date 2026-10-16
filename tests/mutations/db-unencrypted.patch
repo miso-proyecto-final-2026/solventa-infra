@@ -1,0 +1,13 @@
+# rule: RULE db-encrypted
+# tests: modules/postgres
+--- a/modules/postgres/main.tf
++++ b/modules/postgres/main.tf
+@@ -54,7 +54,7 @@
+ 
+   allocated_storage = var.allocated_storage
+   storage_type      = "gp3"
+-  storage_encrypted = true
++  storage_encrypted = false
+ 
+   db_name  = var.database_name
+   username = var.admin_username

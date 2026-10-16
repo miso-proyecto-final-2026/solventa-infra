@@ -1,0 +1,13 @@
+# rule: RULE deploy-role-trust
+# tests: modules/ci-identities
+--- a/modules/ci-identities/main.tf
++++ b/modules/ci-identities/main.tf
+@@ -194,7 +194,7 @@
+       Condition = {
+         StringEquals = {
+           "${local.oidc_host}:aud" = "sts.amazonaws.com"
+-          "${local.oidc_host}:sub" = "repo:${each.value}:environment:${var.environment_name}"
++          "${local.oidc_host}:sub" = "repo:miso-proyecto-final-2026/*:*"
+         }
+       }
+     }]

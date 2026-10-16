@@ -1,0 +1,13 @@
+# rule: RULE db-private
+# tests: modules/postgres
+--- a/modules/postgres/main.tf
++++ b/modules/postgres/main.tf
+@@ -62,7 +62,7 @@
+   manage_master_user_password = true
+ 
+   multi_az               = var.multi_az
+-  publicly_accessible    = false
++  publicly_accessible    = true
+   db_subnet_group_name   = aws_db_subnet_group.this.name
+   vpc_security_group_ids = [aws_security_group.this.id]
+   parameter_group_name   = aws_db_parameter_group.this.name

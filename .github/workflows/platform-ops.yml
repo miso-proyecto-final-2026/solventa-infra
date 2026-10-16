@@ -1,0 +1,93 @@
+name: platform-ops
+
+# Apply y destroy de staging: solo manual y con aprobación del environment `staging` (revisores requeridos).
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Acción"
+        type: choice
+        options: [apply, destroy]
+        required: true
+      stage:
+        description: "Etapa"
+        type: choice
+        options: [all, platform, baseline]
+        default: all
+        required: true
+      image_tag:
+        description: "SHA de la imagen de solventa-backend (obligatorio para aplicar baseline)"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: platform-ops
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  ops:
+    name: ${{ inputs.action }} ${{ inputs.stage }}
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15.0"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Backend config
+        run: |
+          printf 'bucket = "%s"\nregion = "%s"\n' "${{ vars.TF_STATE_BUCKET }}" "$AWS_REGION" > environments/staging/backend.hcl
+
+      # ---- apply: platform -> baseline ----
+      - name: Apply platform
+        if: inputs.action == 'apply' && (inputs.stage == 'all' || inputs.stage == 'platform')
+        run: |
+          terraform -chdir=environments/staging/platform init -input=false -backend-config=../backend.hcl
+          terraform -chdir=environments/staging/platform apply -input=false -auto-approve -var-file=staging.tfvars
+
+      - name: Apply baseline
+        if: inputs.action == 'apply' && (inputs.stage == 'all' || inputs.stage == 'baseline')
+        run: |
+          if [ -z "${{ inputs.image_tag }}" ]; then
+            echo "::error::image_tag es obligatorio para aplicar el baseline (SHA ya publicado en ECR)"
+            exit 1
+          fi
+          aws eks update-kubeconfig --name solventa-staging --region "$AWS_REGION"
+          terraform -chdir=environments/staging/baseline init -input=false -backend-config=../backend.hcl
+          terraform -chdir=environments/staging/baseline apply -input=false -auto-approve \
+            -var-file=staging.tfvars \
+            -var "state_bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -var 'image_tags={"solventa-backend":"${{ inputs.image_tag }}"}'
+
+      # ---- destroy: baseline -> platform -> verificación ----
+      - name: Destroy baseline
+        if: inputs.action == 'destroy' && (inputs.stage == 'all' || inputs.stage == 'baseline')
+        run: |
+          aws eks update-kubeconfig --name solventa-staging --region "$AWS_REGION"
+          terraform -chdir=environments/staging/baseline init -input=false -backend-config=../backend.hcl
+          terraform -chdir=environments/staging/baseline destroy -input=false -auto-approve \
+            -var-file=staging.tfvars \
+            -var "state_bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -var check_images_exist=false
+
+      - name: Destroy platform
+        if: inputs.action == 'destroy' && (inputs.stage == 'all' || inputs.stage == 'platform')
+        run: |
+          terraform -chdir=environments/staging/platform init -input=false -backend-config=../backend.hcl
+          terraform -chdir=environments/staging/platform destroy -input=false -auto-approve -var-file=staging.tfvars
+
+      - name: Verificar teardown
+        if: inputs.action == 'destroy' && inputs.stage == 'all'
+        run: sh scripts/verificar-teardown.sh "$AWS_REGION"

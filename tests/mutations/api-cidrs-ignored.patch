@@ -1,0 +1,13 @@
+# rule: RULE eks-api-cidrs
+# tests: modules/eks-cluster
+--- a/modules/eks-cluster/main.tf
++++ b/modules/eks-cluster/main.tf
+@@ -30,7 +30,7 @@
+   endpoint = {
+     public       = true
+     private      = true
+-    public_cidrs = var.api_allowed_cidrs
++    public_cidrs = ["0.0.0.0/0"]
+   }
+   support_type = "STANDARD"
+ 

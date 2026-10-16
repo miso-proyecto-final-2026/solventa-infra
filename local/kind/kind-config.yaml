@@ -1,0 +1,14 @@
+# 1 plano de control + 3 workers en dos "zonas" simuladas, para probar topologySpread (FR-031).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zona-a
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zona-b
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zona-a

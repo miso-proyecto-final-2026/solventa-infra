@@ -1,0 +1,51 @@
+# Composición del baseline en clúster (research R4): la misma para AWS y para kind.
+# Orden: addons (ESO + store) → db-access → migración → Deployment (FR-025).
+
+module "addons" {
+  source = "../cluster-addons"
+
+  secret_store        = var.secret_store
+  metrics_server_args = var.metrics_server_args
+  staging_namespace   = var.staging_namespace
+  system_namespace    = var.system_namespace
+}
+
+module "db_access" {
+  source = "../db-access"
+
+  services = {
+    for name, s in var.services : name => {
+      role_name     = s.role_name
+      owned_schemas = s.owned_schemas
+    }
+  }
+
+  reserved_schemas = var.reserved_schemas
+  drop_schemas     = var.drop_schemas
+
+  db                         = var.db
+  secret_store_name          = module.addons.secret_store_name
+  service_db_secret_names    = var.service_db_secret_names
+  service_db_secret_versions = var.service_db_secret_versions
+  namespace                  = module.addons.system_namespace
+
+  depends_on = [module.addons]
+}
+
+module "workload" {
+  source   = "../service-workload"
+  for_each = var.services
+
+  name      = each.key
+  service   = each.value
+  namespace = module.addons.staging_namespace
+
+  image_registry    = var.image_registry
+  secret_store_name = module.addons.secret_store_name
+  db_secret_name    = var.service_db_secret_names[each.key]
+  db_sslmode        = var.db.sslmode
+  cache             = var.cache
+
+  # El Job db-access crea el rol y los esquemas antes de que corra la migración.
+  depends_on = [module.db_access]
+}

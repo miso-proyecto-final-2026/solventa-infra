@@ -13,56 +13,171 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  TF_DIR: environments/staging
+  TF_VERSION: "~1.15.0"
 
 jobs:
-  validate:
-    name: validate
+  validate-matrix:
+    name: validate (${{ matrix.dir }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir:
+          - bootstrap
+          - environments/staging/platform
+          - environments/staging/baseline
+          - local/kind
+          - local/emulator
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: terraform-linters/setup-tflint@v4
       - name: terraform fmt
         run: terraform fmt -check -recursive
       - name: terraform init (sin backend)
-        run: terraform -chdir=${{ env.TF_DIR }} init -backend=false
+        run: terraform -chdir=${{ matrix.dir }} init -backend=false -input=false
       - name: terraform validate
-        run: terraform -chdir=${{ env.TF_DIR }} validate
+        run: terraform -chdir=${{ matrix.dir }} validate
+      - name: tflint
+        run: |
+          tflint --init --config="$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --config="$GITHUB_WORKSPACE/.tflint.hcl" --chdir=${{ matrix.dir }}
+
+  # Job agregado con el nombre exacto `validate`: es el check requerido por la protección de rama.
+  validate:
+    name: validate
+    needs: validate-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resultado de la matriz
+        run: |
+          if [ "${{ needs.validate-matrix.result }}" != "success" ]; then
+            echo "::error::falló la validación de alguna raíz (${{ needs.validate-matrix.result }})"
+            exit 1
+          fi
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: terraform test (proveedores simulados, sin credenciales AWS)
+        run: |
+          set -e
+          for d in modules/* bootstrap environments/staging/platform environments/staging/baseline; do
+            if [ -d "$d/tests" ]; then
+              echo "::group::terraform test $d"
+              terraform -chdir="$d" init -backend=false -input=false
+              terraform -chdir="$d" test
+              echo "::endgroup::"
+            fi
+          done
+      - name: Comprobación de mutaciones (SC-006)
+        run: sh scripts/mutation-check.sh
+
+  scan:
+    name: scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: checkov
+        run: |
+          pip install checkov
+          checkov --config-file .checkov.yaml
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source /repo --config /repo/.gitleaks.toml --no-banner --redact
+
+  emulator:
+    name: emulator
+    runs-on: ubuntu-latest
+    services:
+      moto:
+        image: motoserver/moto:5.1.4
+        ports:
+          - 5000:5000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Aplicar local/emulator contra Moto (sin credenciales AWS)
+        run: |
+          terraform -chdir=local/emulator init -input=false
+          terraform -chdir=local/emulator apply -auto-approve -input=false
 
   plan:
     name: plan
-    needs: validate
-    # Requiere configurar la variable AWS_ROLE_ARN (OIDC) en Settings > Variables
-    if: vars.AWS_ROLE_ARN != ''
+    needs: validate-matrix
+    # Requiere la variable AWS_PLAN_ROLE_ARN (rol de solo lectura del bootstrap) y TF_STATE_BUCKET.
+    if: vars.AWS_PLAN_ROLE_ARN != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - run: terraform -chdir=${{ env.TF_DIR }} init
-      - name: terraform plan
-        run: terraform -chdir=${{ env.TF_DIR }} plan -no-color -out=tfplan
+      - name: Backend config
+        run: |
+          printf 'bucket = "%s"\nregion = "%s"\n' "${{ vars.TF_STATE_BUCKET }}" "$AWS_REGION" > environments/staging/backend.hcl
+      - name: Plan de platform (siempre)
+        run: |
+          terraform -chdir=environments/staging/platform init -input=false -backend-config=../backend.hcl
+          terraform -chdir=environments/staging/platform plan -input=false -no-color \
+            -var-file=staging.tfvars -lock=false | tee platform-plan.txt
+      - name: Plan de baseline (solo si el clúster existe)
+        run: |
+          if aws eks describe-cluster --name solventa-staging --region "$AWS_REGION" >/dev/null 2>&1; then
+            terraform -chdir=environments/staging/baseline init -input=false -backend-config=../backend.hcl
+            terraform -chdir=environments/staging/baseline plan -input=false -no-color \
+              -var-file=staging.tfvars -var "state_bucket=${{ vars.TF_STATE_BUCKET }}" -lock=false | tee baseline-plan.txt
+          else
+            echo "::notice::staging no está aprovisionado; se omite el plan de baseline"
+            echo "staging no está aprovisionado: plan de baseline omitido." > baseline-plan.txt
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: tfplan
-          path: ${{ env.TF_DIR }}/tfplan
-
-  apply:
-    name: apply
-    needs: plan
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    # El environment "staging" debe tener revisores requeridos (aprobación manual)
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - run: terraform -chdir=${{ env.TF_DIR }} init
-      - run: terraform -chdir=${{ env.TF_DIR }} apply -auto-approve
+          name: plans
+          path: |
+            platform-plan.txt
+            baseline-plan.txt
+      - name: Adjuntar el plan al PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### Plan de Terraform (solo lectura)"
+            echo
+            echo "<details><summary>platform</summary>"
+            echo
+            echo '```'
+            tail -n 200 platform-plan.txt
+            echo '```'
+            echo "</details>"
+            echo
+            echo "<details><summary>baseline</summary>"
+            echo
+            echo '```'
+            tail -n 200 baseline-plan.txt
+            echo '```'
+            echo "</details>"
+          } > pr-comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file pr-comment.md

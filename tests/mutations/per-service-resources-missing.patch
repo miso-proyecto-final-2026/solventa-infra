@@ -1,0 +1,13 @@
+# rule: per-service resources
+# tests: environments/staging/baseline
+--- a/modules/baseline/main.tf
++++ b/modules/baseline/main.tf
+@@ -34,7 +34,7 @@
+ 
+ module "workload" {
+   source   = "../service-workload"
+-  for_each = var.services
++  for_each = {}
+ 
+   name      = each.key
+   service   = each.value

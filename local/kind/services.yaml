@@ -1,0 +1,22 @@
+# Misma estructura que environments/staging/services.yaml (contrato C1), con imágenes locales.
+reserved_schemas: [identidad, perfilamiento, suscripcion, pagos, siniestros, socios]
+drop_schemas: []
+
+services:
+  - name: solventa-backend
+    image_tag: local # docker build -t solventa-backend:local ../solventa-backend && kind load docker-image ...
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    replicas: { min: 2, max: 4 }
+    autoscaling: { cpu_target_percent: 70 }
+    owned_schemas: [public, cotizacion]
+    database_env_vars: [DATABASE_URL, COTIZACION_DATABASE_URL]
+    cache_env_var: REDIS_URL
+    settings:
+      REGLAS_VERSION: v1
+      PROVEEDORES_TIMEOUT_S: "0.7"
+    migration_command: [alembic, upgrade, head]
+    run_as_non_root: false
