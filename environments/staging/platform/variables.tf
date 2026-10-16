@@ -1,0 +1,123 @@
+variable "region" {
+  description = "Región AWS."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "name" {
+  description = "Nombre del entorno (prefijo solventa-<name>)."
+  type        = string
+  default     = "staging"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,15}$", var.name))
+    error_message = "name must match ^[a-z][a-z0-9-]{1,15}$."
+  }
+}
+
+variable "az_count" {
+  description = "Número de zonas de disponibilidad (mínimo 2, FR-006)."
+  type        = number
+  default     = 2
+}
+
+variable "vpc_cidr" {
+  description = "CIDR de la VPC."
+  type        = string
+  default     = "10.40.0.0/16"
+}
+
+variable "one_nat_gateway_per_az" {
+  description = "Un NAT gateway por AZ (más costo, más independencia entre AZ)."
+  type        = bool
+  default     = false
+}
+
+variable "kubernetes_version" {
+  description = "Versión de Kubernetes (debe estar en soporte estándar de EKS)."
+  type        = string
+  default     = "1.35"
+}
+
+variable "node_instance_type" {
+  description = "Tipo de instancia de los nodos."
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "node_count" {
+  description = "Número de nodos (mínimo az_count)."
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.node_count >= var.az_count
+    error_message = "node_count must be at least az_count."
+  }
+}
+
+variable "api_allowed_cidrs" {
+  description = "CIDR con acceso al endpoint público de la API (FR-011a). Restringirlo a la IP del equipo en cuanto sea posible."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "cluster_admin_principal_arns" {
+  description = "Principales IAM adicionales con rol de administrador del clúster; el rol de apply de CI siempre se incluye (FR-011)."
+  type        = list(string)
+  default     = []
+}
+
+variable "db_instance_class" {
+  description = "Clase de instancia de RDS."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "db_multi_az" {
+  description = "RDS Multi-AZ (FR-012)."
+  type        = bool
+  default     = true
+}
+
+variable "db_backup_retention_days" {
+  description = "Días de retención de respaldos (mínimo 7, FR-012)."
+  type        = number
+  default     = 7
+}
+
+variable "db_deletion_protection" {
+  description = "Protección contra borrado de RDS (false por defecto, FR-017)."
+  type        = bool
+  default     = false
+}
+
+variable "db_final_snapshot" {
+  description = "Snapshot final de RDS al destruir (false por defecto, FR-017)."
+  type        = bool
+  default     = false
+}
+
+variable "cache_node_type" {
+  description = "Tipo de nodo de ElastiCache."
+  type        = string
+  default     = "cache.t4g.micro"
+}
+
+variable "cache_engine" {
+  description = "Motor de caché: redis o valkey (FR-018)."
+  type        = string
+  default     = "redis"
+}
+
+variable "cache_replicas" {
+  description = "Réplicas de la caché (mínimo 1, FR-018)."
+  type        = number
+  default     = 1
+}
+
+variable "enable_control_plane_logging" {
+  description = "Logs del plano de control de EKS (genera un log group gestionado)."
+  type        = bool
+  default     = false
+}

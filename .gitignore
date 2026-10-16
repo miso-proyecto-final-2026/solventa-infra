@@ -1,1 +1,26 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+crash.log
+backend.hcl
+*.auto.tfvars
+override.tf
+override.tf.json
+
+# Secretos y credenciales
+.env*
+*.pem
+*.key
+kubeconfig*
+
+# Windows / editores
 *:Zone.Identifier
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Virtualenv
+.venv-tools/

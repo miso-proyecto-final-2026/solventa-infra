@@ -1,0 +1,26 @@
+# Lista única de microservicios (contrato C1). La leen bootstrap, platform y baseline.
+# Esquemas reservados para microservicios futuros (sin dueño, sin permisos).
+reserved_schemas: [identidad, perfilamiento, suscripcion, pagos, siniestros, socios]
+
+# Solo se eliminan si están aquí Y no tienen dueño. Vacío por defecto.
+drop_schemas: []
+
+services:
+  - name: solventa-backend            # = repo ECR, Deployment, Service, rol de BD (solventa_backend)
+    image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    replicas: { min: 2, max: 10 }
+    autoscaling: { cpu_target_percent: 70 }
+    owned_schemas: [public, cotizacion]
+    database_env_vars: [DATABASE_URL, COTIZACION_DATABASE_URL]
+    cache_env_var: REDIS_URL
+    settings:
+      REGLAS_VERSION: v1
+      PROVEEDORES_TIMEOUT_S: "0.7"
+    migration_command: [alembic, upgrade, head]
+    run_as_non_root: false
+    deploy_repository: miso-proyecto-final-2026/solventa-backend

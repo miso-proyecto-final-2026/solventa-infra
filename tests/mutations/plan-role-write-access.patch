@@ -1,0 +1,13 @@
+# rule: RULE plan-role-readonly
+# tests: modules/ci-identities
+--- a/modules/ci-identities/main.tf
++++ b/modules/ci-identities/main.tf
+@@ -71,7 +71,7 @@
+       {
+         Sid      = "ReadState"
+         Effect   = "Allow"
+-        Action   = ["s3:GetObject", "s3:ListBucket", "s3:GetBucketLocation"]
++        Action   = ["s3:GetObject", "s3:ListBucket", "s3:GetBucketLocation", "ec2:*"]
+         Resource = [local.state_bucket_arn, "${local.state_bucket_arn}/*"]
+       },
+       {

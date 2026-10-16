@@ -1,0 +1,117 @@
+-- Generado por Terraform (modules/db-access). Idempotente: se puede ejecutar repetidamente.
+-- Cada servicio solo ve los esquemas que posee (FR-014); los esquemas se mueven sin perder filas (FR-016).
+\set ON_ERROR_STOP on
+\echo 'db-access: inicio'
+
+%{ for s in services ~}
+\getenv pw_${s.role} PW_${s.role}
+%{ endfor ~}
+
+-- 1. Roles de servicio: LOGIN sin privilegios elevados, contraseña desde el entorno (nunca en este texto).
+%{ for s in services ~}
+SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT', '${s.role}')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${s.role}') \gexec
+SELECT format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT PASSWORD %L', '${s.role}', :'pw_${s.role}') \gexec
+COMMENT ON ROLE "${s.role}" IS 'managed-by=solventa-platform';
+-- El administrador necesita pertenecer al rol para poder transferir la propiedad de los objetos.
+SELECT format('GRANT %I TO CURRENT_USER WITH INHERIT TRUE, SET TRUE', '${s.role}') \gexec
+-- CREATE en la base: las migraciones ejecutan CREATE SCHEMA IF NOT EXISTS (research R10).
+SELECT format('GRANT CONNECT, CREATE ON DATABASE %I TO %I', current_database(), '${s.role}') \gexec
+%{ endfor ~}
+
+-- 2. Roles gestionados que ya no están en la lista: se retiran y sus esquemas pasan al administrador (datos intactos).
+DO $do$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT rolname FROM pg_roles
+     WHERE shobj_description(oid, 'pg_authid') = 'managed-by=solventa-platform'
+       AND rolname <> ALL (ARRAY[${roles_array}]::name[])
+  LOOP
+    EXECUTE format('GRANT %I TO CURRENT_USER WITH INHERIT TRUE, SET TRUE', r.rolname);
+    EXECUTE format('REASSIGN OWNED BY %I TO CURRENT_USER', r.rolname);
+    EXECUTE format('DROP OWNED BY %I', r.rolname);
+    EXECUTE format('DROP ROLE %I', r.rolname);
+    RAISE NOTICE 'db-access: rol retirado %', r.rolname;
+  END LOOP;
+END
+$do$;
+
+-- 3. Esquemas reservados y con dueño (los reservados quedan sin dueño y sin permisos).
+%{ for sc in all_schemas ~}
+CREATE SCHEMA IF NOT EXISTS "${sc}";
+%{ endfor ~}
+
+-- 4. Propiedad: esquema y todos sus objetos pasan al servicio dueño.
+%{ for sc, owner in schema_owner ~}
+%{ if sc == "public" ~}
+GRANT USAGE, CREATE ON SCHEMA public TO "${owner}";
+%{ else ~}
+ALTER SCHEMA "${sc}" OWNER TO "${owner}";
+%{ endif ~}
+DO $do$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT c.oid::regclass AS obj, c.relkind
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = '${sc}'
+       AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
+       AND pg_get_userbyid(c.relowner) <> '${owner}'
+       AND NOT EXISTS (
+         SELECT 1 FROM pg_depend d
+          WHERE d.objid = c.oid AND d.classid = 'pg_class'::regclass AND d.deptype IN ('a', 'i')
+       )
+  LOOP
+    EXECUTE format(
+      'ALTER %s %s OWNER TO %I',
+      CASE r.relkind WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW' WHEN 'S' THEN 'SEQUENCE' WHEN 'f' THEN 'FOREIGN TABLE' ELSE 'TABLE' END,
+      r.obj, '${owner}');
+  END LOOP;
+  FOR r IN
+    SELECT p.oid::regprocedure AS fn, p.prokind
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = '${sc}'
+       AND pg_get_userbyid(p.proowner) <> '${owner}'
+       AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
+  LOOP
+    EXECUTE format(
+      'ALTER %s %s OWNER TO %I',
+      CASE r.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END,
+      r.fn, '${owner}');
+  END LOOP;
+END
+$do$;
+%{ endfor ~}
+
+-- 5. Aislamiento: ningún servicio conserva acceso a esquemas que no posee.
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+%{ for s in services ~}
+%{ for sc in revoke_schemas ~}
+%{ if lookup(schema_owner, sc, "") != s.role ~}
+REVOKE ALL ON SCHEMA "${sc}" FROM "${s.role}";
+%{ endif ~}
+%{ endfor ~}
+%{ endfor ~}
+
+-- 6. Eliminación explícita (solo esquemas sin dueño, FR-016).
+%{ for sc in drop_schemas ~}
+DO $do$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_namespace n
+     WHERE n.nspname = '${sc}'
+       AND shobj_description(n.nspowner, 'pg_authid') = 'managed-by=solventa-platform'
+  ) THEN
+    RAISE EXCEPTION 'El esquema ${sc} tiene dueño; no se elimina';
+  END IF;
+END
+$do$;
+DROP SCHEMA IF EXISTS "${sc}" CASCADE;
+%{ endfor ~}
+
+\echo 'db-access: fin'

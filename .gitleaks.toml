@@ -1,0 +1,10 @@
+title = "solventa-infra gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Archivos de ejemplo y plantillas sin secretos reales"
+paths = [
+  '''environments/staging/backend\.hcl\.example''',
+]

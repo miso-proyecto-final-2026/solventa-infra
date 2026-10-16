@@ -1,0 +1,12 @@
+# rule: RULE ignore-changes
+# tests: modules/service-workload
+--- a/modules/service-workload/deployment.tf
++++ b/modules/service-workload/deployment.tf
+@@ -114,7 +114,6 @@
+   lifecycle {
+     # CI cambia la imagen y el HPA las réplicas: Terraform no debe revertirlas (FR-026, SC-008).
+     ignore_changes = [
+-      spec[0].template[0].spec[0].container[0].image,
+       spec[0].replicas,
+     ]
+   }

@@ -1,0 +1,13 @@
+# rule: RULE eks-private-endpoint
+# tests: modules/eks-cluster
+--- a/modules/eks-cluster/main.tf
++++ b/modules/eks-cluster/main.tf
+@@ -29,7 +29,7 @@
+   # Configuración del endpoint y de la política de soporte; los tests verifican estos valores (FR-011, FR-011a).
+   endpoint = {
+     public       = true
+-    private      = true
++    private      = false
+     public_cidrs = var.api_allowed_cidrs
+   }
+   support_type = "STANDARD"

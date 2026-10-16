@@ -1,0 +1,117 @@
+# Etapa platform: recursos AWS facturables de staging (VPC, EKS, ECR, RDS, ElastiCache, secretos).
+# Los roles de CI viven en bootstrap/ y sobreviven al teardown (research R8).
+
+data "aws_caller_identity" "current" {}
+
+locals {
+  account_id   = data.aws_caller_identity.current.account_id
+  cluster_name = "solventa-${var.name}"
+
+  # E9: etiquetas obligatorias (FR-005), aplicadas por default_tags y por cada módulo.
+  tags = {
+    Project     = "solventa"
+    Environment = var.name
+    Repository  = "miso-proyecto-final-2026/solventa-infra"
+    ManagedBy   = "terraform"
+    Stage       = "platform"
+  }
+
+  # Roles de bootstrap, localizados por nombre determinista.
+  apply_role_arn   = "arn:aws:iam::${local.account_id}:role/solventa-ci-infra-apply"
+  plan_role_arn    = "arn:aws:iam::${local.account_id}:role/solventa-ci-infra-plan"
+  deploy_role_arns = { for name, s in module.service_list.services : name => "arn:aws:iam::${local.account_id}:role/solventa-ci-deploy-${name}" }
+}
+
+module "service_list" {
+  source = "../../../modules/service-list"
+
+  config = yamldecode(file("${path.module}/../services.yaml"))
+}
+
+module "network" {
+  source = "../../../modules/network"
+
+  name                   = local.cluster_name
+  cluster_name           = local.cluster_name
+  vpc_cidr               = var.vpc_cidr
+  az_count               = var.az_count
+  one_nat_gateway_per_az = var.one_nat_gateway_per_az
+  tags                   = local.tags
+}
+
+module "registry" {
+  source = "../../../modules/registry"
+
+  repositories = toset(keys(module.service_list.services))
+  tags         = local.tags
+}
+
+module "eks" {
+  source = "../../../modules/eks-cluster"
+
+  cluster_name       = local.cluster_name
+  kubernetes_version = var.kubernetes_version
+  vpc_id             = module.network.vpc_id
+  subnet_ids         = module.network.private_subnet_ids
+
+  api_allowed_cidrs            = var.api_allowed_cidrs
+  cluster_admin_principal_arns = distinct(concat([local.apply_role_arn], var.cluster_admin_principal_arns))
+  plan_role_arn                = local.plan_role_arn
+  deployer_role_arns           = local.deploy_role_arns
+
+  node_instance_type           = var.node_instance_type
+  node_count                   = var.node_count
+  enable_control_plane_logging = var.enable_control_plane_logging
+  db_admin_secret_arn          = module.postgres.admin_secret_arn
+
+  tags = local.tags
+}
+
+module "postgres" {
+  source = "../../../modules/postgres"
+
+  name                      = "${local.cluster_name}-postgres"
+  vpc_id                    = module.network.vpc_id
+  subnet_ids                = module.network.private_subnet_ids
+  allowed_security_group_id = module.eks.node_security_group_id
+
+  instance_class         = var.db_instance_class
+  multi_az               = var.db_multi_az
+  backup_retention_days  = var.db_backup_retention_days
+  deletion_protection    = var.db_deletion_protection
+  final_snapshot_enabled = var.db_final_snapshot
+
+  tags = local.tags
+}
+
+module "redis" {
+  source = "../../../modules/redis"
+
+  name                      = "${local.cluster_name}-cache"
+  vpc_id                    = module.network.vpc_id
+  subnet_ids                = module.network.private_subnet_ids
+  azs                       = module.network.azs
+  allowed_security_group_id = module.eks.node_security_group_id
+
+  node_type = var.cache_node_type
+  engine    = var.cache_engine
+  replicas  = var.cache_replicas
+
+  tags = local.tags
+}
+
+module "service_secrets" {
+  source = "../../../modules/service-secrets"
+
+  services = { for name, s in module.service_list.services : name => { role_name = s.role_name } }
+
+  db_host          = module.postgres.endpoint
+  db_port          = module.postgres.port
+  db_name          = module.postgres.database_name
+  cache_host       = module.redis.primary_endpoint
+  cache_port       = module.redis.port
+  cache_auth_token = module.redis.auth_token
+
+  secret_prefix = "solventa/${var.name}"
+  tags          = local.tags
+}

@@ -1,0 +1,4 @@
+# Copiar a backend.hcl (ignorado por git) y completar con los valores de bootstrap.
+# bucket = salida `state_bucket` del bootstrap.
+bucket = "solventa-tfstate-<ACCOUNT_ID>-us-east-1"
+region = "us-east-1"

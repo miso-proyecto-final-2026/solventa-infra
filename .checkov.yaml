@@ -1,0 +1,42 @@
+framework:
+  - terraform
+quiet: true
+compact: true
+# Solo se escanea el código de producción; local/ (kind y Moto) son entornos desechables.
+directory:
+  - bootstrap
+  - modules
+  - environments
+# Excepciones documentadas (staging bajo demanda, ver README "Pruebas locales"):
+skip-check:
+  # Estado remoto y almacenes: alcance fuera de staging o claves gestionadas por AWS (research R16)
+  - CKV_AWS_144   # replicación cross-region del bucket de estado
+  - CKV_AWS_145   # SSE-KMS con CMK propia: se usa clave gestionada por AWS
+  - CKV2_AWS_62   # notificaciones de eventos S3
+  - CKV_AWS_18    # access logging del bucket de estado
+  - CKV_AWS_136   # ECR con KMS propia
+  - CKV_AWS_149   # Secrets Manager con KMS propia
+  - CKV2_AWS_57   # rotación automática de secretos (contrato C2)
+  - CKV_AWS_157   # RDS Multi-AZ: configurable (db_multi_az)
+  - CKV_AWS_191   # ElastiCache con CMK propia
+  # RDS: decisiones de costo/compatibilidad de un staging bajo demanda
+  - CKV_AWS_293   # deletion protection: apagada a propósito para teardown (FR-017)
+  - CKV_AWS_118   # enhanced monitoring: costo adicional, fuera de alcance
+  - CKV_AWS_353   # performance insights: no disponible en db.t4g.micro
+  - CKV_AWS_161   # autenticación IAM de RDS: requiere cambios en el backend (research R10)
+  # Terraform y cadena de suministro
+  - CKV_TF_1      # módulos comunitarios fijados por versión (~> 6.0 / ~> 21.0), no por hash
+  - CKV_AWS_394   # zonas de disponibilidad: se limita con az_count
+  # IAM de CI
+  - CKV_AWS_355   # Get*/List* sobre "*" solo para refrescar IAM (research R8)
+  - CKV_AWS_393   # el trust usa sub exacto por repositorio y environment
+  # Kubernetes: comprobaciones que no aplican al diseño (research R11)
+  - CKV_K8S_35    # los servicios leen variables de entorno (envFrom); no se cambia el backend
+  - CKV_K8S_22    # sistema de archivos de solo lectura: depende de la imagen del servicio
+  - CKV_K8S_43    # imágenes por tag inmutable (ECR IMMUTABLE), no por digest
+  - CKV_K8S_15    # pull policy: tags inmutables
+  - CKV_K8S_14    # el tag lo fija CI y es un SHA, nunca latest
+  - CKV_K8S_10    # requests/limits llegan por variable (services.yaml): falso positivo
+  - CKV_K8S_11
+  - CKV_K8S_12
+  - CKV_K8S_13
