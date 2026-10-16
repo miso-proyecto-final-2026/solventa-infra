@@ -22,6 +22,7 @@ variable "config" {
       database_env_vars = optional(list(string), ["DATABASE_URL"])
       cache_env_var     = optional(string, "REDIS_URL")
       settings          = optional(map(string), {})
+      secret_env_vars   = optional(map(string), {})
       migration_command = optional(list(string))
       run_as_non_root   = optional(bool, false)
       deploy_repository = optional(string)
@@ -152,5 +153,17 @@ variable "config" {
       "Service \"%s\": invalid port or health_path.",
       join("\", \"", [for s in var.config.services : s.name if !(s.port >= 1 && s.port <= 65535 && startswith(s.health_path, "/"))])
     )
+  }
+
+  # V8: secret_env_vars no colisiona con conexiones generadas ni con settings, y apunta a secretos del prefijo
+  validation {
+    condition = alltrue([
+      for s in var.config.services : alltrue([
+        for k, name in s.secret_env_vars :
+        !contains(concat(s.database_env_vars, s.cache_env_var == "" ? [] : [s.cache_env_var], keys(s.settings)), k)
+        && startswith(name, "solventa/")
+      ])
+    ])
+    error_message = "A secret_env_vars entry collides with a connection variable or a setting, or its secret name does not start with \"solventa/\"."
   }
 }

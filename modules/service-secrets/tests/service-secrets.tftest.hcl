@@ -48,3 +48,35 @@ run "secrets_follow_the_contract" {
     error_message = "RULE tags: every resource must carry the five mandatory tags."
   }
 }
+
+run "shared_secrets_follow_the_contract" {
+  command = plan
+
+  variables {
+    shared_secret_names = ["solventa/staging/identidad-service-key"]
+  }
+
+  assert {
+    condition     = aws_secretsmanager_secret.shared["solventa/staging/identidad-service-key"].name == "solventa/staging/identidad-service-key" && aws_secretsmanager_secret.shared["solventa/staging/identidad-service-key"].recovery_window_in_days == 0
+    error_message = "Shared secrets must use the given full name and recovery_window_in_days = 0."
+  }
+
+  assert {
+    condition     = alltrue([for k, p in random_password.shared : p.length >= 32 && p.special == false])
+    error_message = "Shared secrets must be at least 32 alphanumeric characters."
+  }
+
+  assert {
+    condition     = alltrue([for k in ["Project", "Environment", "Repository", "ManagedBy", "Stage"] : contains(keys(aws_secretsmanager_secret.shared["solventa/staging/identidad-service-key"].tags), k)])
+    error_message = "RULE tags: shared secrets must carry the five mandatory tags."
+  }
+}
+
+run "no_shared_secrets_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(aws_secretsmanager_secret.shared) == 0
+    error_message = "Without shared_secret_names no extra secret must be created."
+  }
+}

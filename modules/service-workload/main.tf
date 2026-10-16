@@ -24,6 +24,10 @@ locals {
     : "${var.cache.scheme}://${var.cache.host}:${var.cache.port}/0"
   )
 
+  # Secretos compartidos entre servicios (p. ej. la clave de servicio): variable => nombre del secreto.
+  # Cada uno es un secreto de una sola propiedad (`value`), generado en service-secrets.
+  shared_secret_keys = { for env, name in var.service.secret_env_vars : env => "shared_${lower(env)}" }
+
   external_secret_data = concat(
     [for p in ["username", "password", "host", "port", "dbname"] : {
       secretKey = "db_${p}"
@@ -33,11 +37,16 @@ locals {
       secretKey = "cache_${p}"
       remoteRef = { key = var.cache.secret_ref, property = p }
     }] : [],
+    [for env, name in var.service.secret_env_vars : {
+      secretKey = local.shared_secret_keys[env]
+      remoteRef = { key = name, property = "value" }
+    }],
   )
 
   external_secret_template = merge(
     { for v in var.service.database_env_vars : v => local.db_url },
     local.has_cache ? { (var.service.cache_env_var) = local.cache_url } : {},
+    { for env, key in local.shared_secret_keys : env => "{{ .${key} }}" },
   )
 
   has_migration  = var.service.migration_command != null

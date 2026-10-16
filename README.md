@@ -237,6 +237,11 @@ curl -s -XPOST localhost:8000/v1/cotizaciones -H 'Content-Type: application/json
 
 Notas:
 
+- **Secretos compartidos entre servicios** (p. ej. la clave con la que Cotización consulta a Identidad): declara en cada servicio
+  `secret_env_vars: { VARIABLE: solventa/staging/<nombre> }`. `platform` crea el secreto una sola vez con un valor aleatorio
+  (no vive en git ni en variables) y el baseline lo entrega como variable de entorno por ExternalSecret. Los dos servicios
+  que apuntan al mismo nombre reciben el mismo valor. Solo aplica a AWS; `local/kind` no lo provee.
+- Un servicio nuevo necesita su imagen en ECR antes del baseline (paso 4); el baseline falla antes de tocar cargas si no está.
 - El plan del baseline muestra solo `+`, **salvo** los objetos de `db-access` (Job y ConfigMap de SQL reemplazados, ExternalSecret de contraseñas actualizado) porque cambia su hash.
   Es esperado: es un Job de una sola ejecución (junto con su ConfigMap de SQL y el ExternalSecret de contraseñas, que se actualizan) y reemplazarlo no causa interrupciones.
 - **Mover un esquema** (quitarlo de un servicio y añadirlo a otro): el dueño del esquema y de todos sus objetos

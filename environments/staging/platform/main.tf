@@ -103,7 +103,8 @@ module "redis" {
 module "service_secrets" {
   source = "../../../modules/service-secrets"
 
-  services = { for name, s in module.service_list.services : name => { role_name = s.role_name } }
+  services            = { for name, s in module.service_list.services : name => { role_name = s.role_name } }
+  shared_secret_names = module.service_list.shared_secret_names
 
   db_host          = module.postgres.endpoint
   db_port          = module.postgres.port
