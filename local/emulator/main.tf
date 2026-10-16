@@ -45,7 +45,9 @@ module "ci_identities" {
 
   deploy_repositories = { for name, s in module.service_list.services : name => s.deploy_repository }
   state_bucket_name   = aws_s3_bucket.state[0].bucket
-  tags                = local.tags
+  # Moto no precarga las políticas gestionadas de AWS (ReadOnlyAccess, PowerUserAccess).
+  attach_managed_policies = false
+  tags                    = local.tags
 }
 
 # --- Plataforma: red, registro y secretos -------------------------------------------------------

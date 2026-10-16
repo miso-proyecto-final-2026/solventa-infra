@@ -57,6 +57,8 @@ resource "aws_iam_role" "infra_plan" {
 }
 
 resource "aws_iam_role_policy_attachment" "infra_plan_readonly" {
+  count = var.attach_managed_policies ? 1 : 0
+
   role       = aws_iam_role.infra_plan.name
   policy_arn = "arn:${local.partition}:iam::aws:policy/ReadOnlyAccess"
 }
@@ -117,6 +119,8 @@ resource "aws_iam_role" "infra_apply" {
 }
 
 resource "aws_iam_role_policy_attachment" "infra_apply_poweruser" {
+  count = var.attach_managed_policies ? 1 : 0
+
   role       = aws_iam_role.infra_apply.name
   policy_arn = "arn:${local.partition}:iam::aws:policy/PowerUserAccess"
 }

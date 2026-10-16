@@ -47,3 +47,9 @@ variable "tags" {
     error_message = "tags must include Project, Environment, Repository, ManagedBy and Stage (FR-005)."
   }
 }
+
+variable "attach_managed_policies" {
+  description = "Adjuntar ReadOnlyAccess y PowerUserAccess. Poner false solo en el emulador Moto, que no precarga políticas gestionadas por AWS."
+  type        = bool
+  default     = true
+}

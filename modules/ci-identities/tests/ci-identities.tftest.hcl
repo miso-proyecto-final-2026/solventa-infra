@@ -79,7 +79,7 @@ run "plan_role_is_read_only" {
   command = plan
 
   assert {
-    condition     = aws_iam_role_policy_attachment.infra_plan_readonly.policy_arn == "arn:aws:iam::aws:policy/ReadOnlyAccess"
+    condition     = aws_iam_role_policy_attachment.infra_plan_readonly[0].policy_arn == "arn:aws:iam::aws:policy/ReadOnlyAccess"
     error_message = "RULE plan-role-readonly: the plan role must use ReadOnlyAccess."
   }
 
