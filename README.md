@@ -241,6 +241,11 @@ Notas:
   `secret_env_vars: { VARIABLE: solventa/staging/<nombre> }`. `platform` crea el secreto una sola vez con un valor aleatorio
   (no vive en git ni en variables) y el baseline lo entrega como variable de entorno por ExternalSecret. Los dos servicios
   que apuntan al mismo nombre reciben el mismo valor. Solo aplica a AWS; `local/kind` no lo provee.
+- **Evidencias KYC (HU02):** `platform` crea el bucket `solventa-<env>-kyc-evidencias-<cuenta>` (cifrado, sin acceso público,
+  solo TLS, versionado y con retención de 90 días) y autoriza por Pod Identity únicamente a la cuenta de servicio
+  `solventa-identidad` con `s3:PutObject` bajo `kyc/`. El baseline entrega el nombre y la región al servicio
+  (`KYC_EVIDENCIAS_BUCKET`, `AWS_DEFAULT_REGION`). La lectura para revisión manual no está habilitada: requeriría otro rol.
+  En staging el bucket se crea con `force_destroy` porque solo guarda evidencias sintéticas y se destruye tras cada sesión.
 - Un servicio nuevo necesita su imagen en ECR antes del baseline (paso 4); el baseline falla antes de tocar cargas si no está.
 - El plan del baseline muestra solo `+`, **salvo** los objetos de `db-access` (Job y ConfigMap de SQL reemplazados, ExternalSecret de contraseñas actualizado) porque cambia su hash.
   Es esperado: es un Job de una sola ejecución (junto con su ConfigMap de SQL y el ExternalSecret de contraseñas, que se actualizan) y reemplazarlo no causa interrupciones.

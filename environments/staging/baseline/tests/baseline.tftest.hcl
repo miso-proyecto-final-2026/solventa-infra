@@ -20,6 +20,7 @@ override_data {
       db_admin_secret_arn    = "arn:aws:secretsmanager:us-east-1:123456789012:secret:rds!db-abc"
       cache_primary_endpoint = "solventa-staging-cache.abc.cache.amazonaws.com"
       cache_secret_name      = "solventa/staging/cache"
+      kyc_evidencias_bucket  = "solventa-staging-kyc-evidencias-123456789012"
       service_db_secret_names = {
         "solventa-backend"   = "solventa/staging/solventa-backend/db"
         "solventa-identidad" = "solventa/staging/solventa-identidad/db"
