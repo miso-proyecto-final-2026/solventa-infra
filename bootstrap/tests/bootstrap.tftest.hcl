@@ -66,8 +66,8 @@ run "pipeline_roles_cover_each_service" {
   command = plan
 
   assert {
-    condition     = contains(keys(output.service_deploy_role_arns), "solventa-backend")
-    error_message = "RULE deploy-role-per-service: the backend must get its own deploy role."
+    condition     = contains(keys(output.service_deploy_role_arns), "solventa-backend") && contains(keys(output.service_deploy_role_arns), "solventa-identidad")
+    error_message = "RULE deploy-role-per-service: each service must get its own deploy role."
   }
 
   assert {

@@ -119,7 +119,7 @@ run "platform_composition_follows_the_contract" {
   }
 
   assert {
-    condition     = contains(keys(output.repositories), "solventa-backend")
+    condition     = contains(keys(output.repositories), "solventa-backend") && contains(keys(output.repositories), "solventa-identidad")
     error_message = "One ECR repository per service in services.yaml."
   }
 
@@ -129,7 +129,7 @@ run "platform_composition_follows_the_contract" {
   }
 
   assert {
-    condition     = output.service_db_secret_names["solventa-backend"] == "solventa/staging/solventa-backend/db"
+    condition     = output.service_db_secret_names["solventa-backend"] == "solventa/staging/solventa-backend/db" && output.service_db_secret_names["solventa-identidad"] == "solventa/staging/solventa-identidad/db"
     error_message = "DB secret names must follow solventa/staging/<service>/db."
   }
 
