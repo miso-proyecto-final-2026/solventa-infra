@@ -16,7 +16,7 @@ env:
   TF_VERSION: "~1.15.0"
 
 jobs:
-  validate:
+  validate-matrix:
     name: validate (${{ matrix.dir }})
     runs-on: ubuntu-latest
     strategy:
@@ -44,6 +44,20 @@ jobs:
         run: |
           tflint --init --config="$GITHUB_WORKSPACE/.tflint.hcl"
           tflint --config="$GITHUB_WORKSPACE/.tflint.hcl" --chdir=${{ matrix.dir }}
+
+  # Job agregado con el nombre exacto `validate`: es el check requerido por la protección de rama.
+  validate:
+    name: validate
+    needs: validate-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resultado de la matriz
+        run: |
+          if [ "${{ needs.validate-matrix.result }}" != "success" ]; then
+            echo "::error::falló la validación de alguna raíz (${{ needs.validate-matrix.result }})"
+            exit 1
+          fi
 
   test:
     name: test
@@ -106,7 +120,7 @@ jobs:
 
   plan:
     name: plan
-    needs: validate
+    needs: validate-matrix
     # Requiere la variable AWS_PLAN_ROLE_ARN (rol de solo lectura del bootstrap) y TF_STATE_BUCKET.
     if: vars.AWS_PLAN_ROLE_ARN != ''
     runs-on: ubuntu-latest
