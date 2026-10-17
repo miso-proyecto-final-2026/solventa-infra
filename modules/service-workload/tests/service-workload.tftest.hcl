@@ -163,3 +163,41 @@ run "service_without_migration_or_cache" {
     error_message = "A null cache_env_var must not generate a cache URL."
   }
 }
+
+run "shared_secret_is_injected_from_the_secret_store" {
+  command = plan
+
+  variables {
+    name = "solventa-identidad"
+    service = {
+      image_tag   = "abc1234"
+      port        = 8000
+      health_path = "/health"
+      resources = {
+        requests = { cpu = "250m", memory = "256Mi" }
+        limits   = { cpu = "1000m", memory = "512Mi" }
+      }
+      replicas          = { min = 2, max = 6 }
+      database_env_vars = ["DATABASE_URL"]
+      cache_env_var     = null
+      secret_env_vars   = { SERVICE_API_KEYS = "solventa/staging/identidad-service-key" }
+      migration_command = ["alembic", "upgrade", "head"]
+    }
+    db_secret_name = "solventa/staging/solventa-identidad/db"
+  }
+
+  assert {
+    condition     = yamldecode(kubectl_manifest.connection.yaml_body).spec.target.template.data["SERVICE_API_KEYS"] == "{{ .shared_service_api_keys }}"
+    error_message = "The shared secret must be exposed as the declared env var through the ExternalSecret template."
+  }
+
+  assert {
+    condition     = contains([for d in yamldecode(kubectl_manifest.connection.yaml_body).spec.data : d.remoteRef.key if d.secretKey == "shared_service_api_keys"], "solventa/staging/identidad-service-key") && contains([for d in yamldecode(kubectl_manifest.connection.yaml_body).spec.data : d.remoteRef.property if d.secretKey == "shared_service_api_keys"], "value")
+    error_message = "The ExternalSecret must read property `value` of the shared secret."
+  }
+
+  assert {
+    condition     = !can(regex("[A-Za-z0-9]{40,}", kubectl_manifest.connection.yaml_body))
+    error_message = "RULE no-secrets-in-state: the manifest must hold references, never secret values."
+  }
+}

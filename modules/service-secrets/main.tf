@@ -48,3 +48,28 @@ resource "aws_secretsmanager_secret_version" "cache" {
     port       = tostring(var.cache_port)
   })
 }
+
+# Secretos compartidos entre servicios (clave de servicio): el valor nace aquí y solo viaja por ESO.
+resource "random_password" "shared" {
+  for_each = var.shared_secret_names
+
+  length  = 48
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "shared" {
+  for_each = var.shared_secret_names
+
+  name                    = each.key
+  description             = "Secreto compartido entre servicios"
+  recovery_window_in_days = 0
+
+  tags = var.tags
+}
+
+resource "aws_secretsmanager_secret_version" "shared" {
+  for_each = var.shared_secret_names
+
+  secret_id     = aws_secretsmanager_secret.shared[each.key].id
+  secret_string = jsonencode({ value = random_password.shared[each.key].result })
+}

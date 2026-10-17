@@ -250,3 +250,90 @@ run "v7_invalid_health_path" {
 
   expect_failures = [var.config]
 }
+
+run "v8_secret_env_vars_are_collected_and_validated" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/h"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas        = { min = 2, max = 2 }
+          secret_env_vars = { SERVICE_API_KEYS = "solventa/staging/identidad-service-key" }
+        },
+        {
+          name        = "svc-b"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/h"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas        = { min = 2, max = 2 }
+          secret_env_vars = { IDENTIDAD_SERVICE_KEY = "solventa/staging/identidad-service-key" }
+        },
+      ]
+    }
+  }
+
+  assert {
+    condition     = output.shared_secret_names == toset(["solventa/staging/identidad-service-key"])
+    error_message = "A secret shared by two services must be listed once."
+  }
+}
+
+run "v8_secret_name_outside_the_prefix" {
+  command = plan
+
+  variables {
+    config = {
+      services = [{
+        name            = "svc-a"
+        image_tag       = "x"
+        port            = 80
+        health_path     = "/h"
+        secret_env_vars = { SERVICE_API_KEYS = "otro-prefijo/clave" }
+        resources = {
+          requests = { cpu = "1m", memory = "1Mi" }
+          limits   = { cpu = "1m", memory = "1Mi" }
+        }
+        replicas = { min = 2, max = 2 }
+      }]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "v8_secret_env_var_collides_with_a_setting" {
+  command = plan
+
+  variables {
+    config = {
+      services = [{
+        name            = "svc-a"
+        image_tag       = "x"
+        port            = 80
+        health_path     = "/h"
+        settings        = { SERVICE_API_KEYS = "x" }
+        secret_env_vars = { SERVICE_API_KEYS = "solventa/staging/k" }
+        resources = {
+          requests = { cpu = "1m", memory = "1Mi" }
+          limits   = { cpu = "1m", memory = "1Mi" }
+        }
+        replicas = { min = 2, max = 2 }
+      }]
+    }
+  }
+
+  expect_failures = [var.config]
+}

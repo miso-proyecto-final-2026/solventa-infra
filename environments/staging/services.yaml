@@ -1,6 +1,6 @@
 # Lista única de microservicios (contrato C1). La leen bootstrap, platform y baseline.
 # Esquemas reservados para microservicios futuros (sin dueño, sin permisos).
-reserved_schemas: [identidad, perfilamiento, suscripcion, pagos, siniestros, socios]
+reserved_schemas: [perfilamiento, suscripcion, pagos, siniestros, socios]
 
 # Solo se eliminan si están aquí Y no tienen dueño. Vacío por defecto.
 drop_schemas: []
@@ -21,6 +21,30 @@ services:
     settings:
       REGLAS_VERSION: v1
       PROVEEDORES_TIMEOUT_S: "0.7"
+      # Cotización consulta el consentimiento a MS Identidad por REST síncrono (ADR-0002); el Service es ClusterIP en el puerto 80.
+      IDENTIDAD_URL: http://solventa-identidad
+      IDENTIDAD_TIMEOUT_S: "0.3"
+    # Misma clave que Identidad acepta en SERVICE_API_KEYS; nace en Secrets Manager, nunca en git.
+    secret_env_vars:
+      IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend
+
+  - name: solventa-identidad          # MS Identidad (ADR-0001): clientes, sesión y consentimiento; esquema propio `identidad`
+    image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    replicas: { min: 2, max: 6 }
+    autoscaling: { cpu_target_percent: 70 }
+    owned_schemas: [identidad]
+    database_env_vars: [DATABASE_URL]
+    cache_env_var: ""                 # Identidad no usa Redis
+    secret_env_vars:
+      SERVICE_API_KEYS: solventa/staging/identidad-service-key
+    migration_command: [alembic, upgrade, head]
+    run_as_non_root: false
+    deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta

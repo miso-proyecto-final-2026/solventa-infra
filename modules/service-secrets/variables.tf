@@ -5,6 +5,12 @@ variable "services" {
   }))
 }
 
+variable "shared_secret_names" {
+  description = "Nombres completos de secretos compartidos entre servicios (p. ej. solventa/staging/identidad-service-key). Cada uno guarda una propiedad `value` aleatoria."
+  type        = set(string)
+  default     = []
+}
+
 variable "db_host" {
   description = "Host de PostgreSQL."
   type        = string

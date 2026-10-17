@@ -67,6 +67,31 @@ module "eks" {
   tags = local.tags
 }
 
+# Evidencias KYC de MS Identidad (HU02): bucket cifrado, privado, solo TLS; el servicio solo escribe.
+module "kyc_evidencias" {
+  source = "../../../modules/evidence-bucket"
+
+  bucket_name     = "solventa-${var.name}-kyc-evidencias-${local.account_id}"
+  cluster_name    = module.eks.cluster_name
+  service_account = "solventa-identidad"
+  # Staging bajo demanda: solo guarda evidencias sintéticas y se destruye tras cada sesión.
+  force_destroy = true
+
+  tags = local.tags
+
+  depends_on = [terraform_data.require_identidad]
+}
+
+# El bucket autoriza a la cuenta de servicio de MS Identidad: sin ese servicio no tiene sentido crearlo.
+resource "terraform_data" "require_identidad" {
+  lifecycle {
+    precondition {
+      condition     = contains(keys(module.service_list.services), "solventa-identidad")
+      error_message = "services.yaml must define solventa-identidad: its service account writes the KYC evidence."
+    }
+  }
+}
+
 module "postgres" {
   source = "../../../modules/postgres"
 
@@ -103,7 +128,8 @@ module "redis" {
 module "service_secrets" {
   source = "../../../modules/service-secrets"
 
-  services = { for name, s in module.service_list.services : name => { role_name = s.role_name } }
+  services            = { for name, s in module.service_list.services : name => { role_name = s.role_name } }
+  shared_secret_names = module.service_list.shared_secret_names
 
   db_host          = module.postgres.endpoint
   db_port          = module.postgres.port

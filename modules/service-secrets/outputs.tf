@@ -17,3 +17,8 @@ output "cache_secret_name" {
   description = "Nombre del secreto de caché (solo referencia)."
   value       = aws_secretsmanager_secret.cache.name
 }
+
+output "shared_secret_names" {
+  description = "Nombres de los secretos compartidos creados (solo referencia)."
+  value       = [for s in aws_secretsmanager_secret.shared : s.name]
+}

@@ -22,10 +22,19 @@ module "service_list" {
 }
 
 locals {
+  # Valores que salen de la plataforma (no se conocen al escribir services.yaml).
+  platform_settings = {
+    "solventa-identidad" = {
+      KYC_EVIDENCIAS_BUCKET = local.platform.kyc_evidencias_bucket
+      AWS_DEFAULT_REGION    = local.platform.region
+    }
+  }
+
   # image_tags permite fijar el SHA en ejecución sin editar services.yaml.
   services = {
     for name, s in module.service_list.services : name => merge(s, {
       image_tag = lookup(var.image_tags, name, s.image_tag)
+      settings  = merge(s.settings, lookup(local.platform_settings, name, {}))
     })
   }
 }

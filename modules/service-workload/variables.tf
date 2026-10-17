@@ -18,6 +18,7 @@ variable "service" {
     database_env_vars = optional(list(string), ["DATABASE_URL"])
     cache_env_var     = optional(string)
     settings          = optional(map(string), {})
+    secret_env_vars   = optional(map(string), {})
     migration_command = optional(list(string))
     run_as_non_root   = optional(bool, false)
   })
