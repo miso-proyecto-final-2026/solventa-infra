@@ -25,7 +25,9 @@ ECR y Secrets Manager, más todo lo necesario para validarla **sin cuenta de AWS
 12. [CI/CD](#cicd)
 13. [Drill HA04](#drill-ha04)
 14. [Teardown](#teardown)
-15. [Notas operativas](#notas-operativas)
+15. [Errores frecuentes](#errores-frecuentes)
+16. [Eliminar todo de la cuenta (limpieza total)](#eliminar-todo-de-la-cuenta-limpieza-total)
+17. [Notas operativas](#notas-operativas)
 
 ## Arquitectura
 
@@ -60,6 +62,41 @@ tests/mutations/  scripts/  .github/workflows/{ci,platform-ops,commitlint,releas
 | Remoto | Lo anterior + AWS CLI v2 y un principal IAM con permisos para ejecutar el bootstrap la primera vez (crear S3, IAM y OIDC). Después se usa el rol de apply o un administrador de la cuenta |
 
 Para las pruebas locales **no debe haber credenciales AWS configuradas** (`AWS_PROFILE` sin definir).
+
+### Permisos del principal IAM (remoto)
+
+El principal que ejecuta bootstrap y plataforma debe tener **`AdministratorAccess`** y usarse solo en una
+**cuenta de pruebas**. Motivo: crear roles IAM equivale a ser administrador, las políticas acotadas chocan con
+el límite de 10 políticas gestionadas por usuario y siempre acaban faltando permisos (p. ej. `ssm:GetParameter`).
+
+1. Consola de AWS → IAM → Users → **Create user** → *Attach policies directly* → `AdministratorAccess`.
+2. En el usuario creado, pestaña *Security credentials* → *Create access key* (uso: CLI).
+3. En tu terminal: `aws configure` (región `us-east-1`) y comprueba con `aws sts get-caller-identity`.
+
+Antes, limpia variables antiguas que pisan la configuración:
+`unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_PROFILE`.
+En Windows usa **Git Bash** (obligatorio para los `.sh`; no PowerShell ni CMD).
+
+### Cuota de vCPU en cuentas nuevas
+
+Una cuenta nueva puede tener la cuota EC2 `L-1216C47A` (*Running On-Demand Standard instances*, en vCPU) en 0 y el
+node group falla con `AsgInstanceLaunchFailures ... quota for maximum Fleet Requests`. **Compruébala antes del apply**:
+
+```sh
+aws service-quotas get-service-quota --service-code ec2 --quota-code L-1216C47A \
+  --region us-east-1 --query Quota.Value
+# Si es < 16, solicita el aumento (3 × t3.medium necesitan 6 vCPU; pide ≥ 16 para tener margen)
+aws service-quotas request-service-quota-increase --service-code ec2 --quota-code L-1216C47A \
+  --region us-east-1 --desired-value 16
+```
+
+Comprueba también que la cuenta tiene un método de pago válido; sin él AWS puede rechazar o retrasar el aumento.
+
+### Marcadores en los comandos
+
+Los valores entre `< >` (`<state_bucket>`, `<SHA>`, `<ACCOUNT_ID>`) son **marcadores**: se reemplazan **sin** los
+`< >`. Pasar el literal produce `InvalidBucketName`. El nombre del bucket se obtiene con
+`terraform -chdir=bootstrap output state_bucket`.
 
 ## Pruebas locales
 
@@ -142,12 +179,20 @@ terraform -chdir=bootstrap apply          # crea bucket de estado, OIDC y roles 
 terraform -chdir=bootstrap output
 ```
 
-Si la cuenta ya tiene el proveedor OIDC de GitHub: `-var create_github_oidc_provider=false`.
+Si la cuenta ya tiene el proveedor OIDC de GitHub: `-var create_github_oidc_provider=false` (si no, el apply
+falla porque el proveedor ya existe; solo puede haber uno por cuenta).
+
+**Qué es el proveedor OIDC de GitHub.** Es una relación de confianza entre la cuenta de AWS y GitHub Actions:
+los workflows obtienen credenciales temporales asumiendo un rol de IAM, sin guardar claves de larga duración.
+Cada rol solo confía en el repositorio indicado. Por eso `deploy_repository` en
+`environments/staging/services.yaml` debe apuntar al **repositorio real** (`owner/repo`) del servicio: si no
+coincide, el rol de despliegue rechaza el `AssumeRoleWithWebIdentity` del CI.
 
 Migra el estado al bucket recién creado: descomenta el bloque `backend "s3"` de `bootstrap/versions.tf` y ejecuta
 `terraform -chdir=bootstrap init -migrate-state -backend-config="bucket=<state_bucket>" -backend-config="region=us-east-1"`.
 
-Copia `environments/staging/backend.hcl.example` a `environments/staging/backend.hcl` y completa el bucket.
+Copia `environments/staging/backend.hcl.example` a `environments/staging/backend.hcl` y completa el bucket
+(sin `< >`; ver [Marcadores](#marcadores-en-los-comandos)).
 
 ## Provisión de la plataforma
 
@@ -157,9 +202,18 @@ terraform -chdir=environments/staging/platform apply -var-file=staging.tfvars
 terraform -chdir=environments/staging/platform output     # no debe mostrar ningún valor sensible
 ```
 
-Tarda ≈ 25–30 min (RDS Multi-AZ y EKS en paralelo). Restringe `api_allowed_cidrs` en `staging.tfvars` a la IP
-del equipo en cuanto puedas. El rol de apply de CI siempre es administrador del clúster; añade a las
-personas que operen con `cluster_admin_principal_arns`.
+Tarda ≈ 25–30 min (RDS Multi-AZ y EKS en paralelo). Comprueba antes la [cuota de vCPU](#cuota-de-vcpu-en-cuentas-nuevas).
+El aviso *"You didn't use the -out option"* del apply es normal: no indica ningún problema.
+
+En `staging.tfvars`:
+
+- `api_allowed_cidrs`: restríngelo a tu IP pública en `/32` (p. ej. `["<TU_IP>/32"]`, sin `< >`).
+- `cluster_admin_principal_arns`: **debe incluir el ARN de quien opera**; si no, `kubectl` responde
+  `Unauthorized`. Si usas un rol SSO, pon el ARN del **rol** (`arn:aws:iam::<ACCOUNT_ID>:role/...`), no el de la
+  sesión (`assumed-role/...`).
+
+El rol de apply de CI siempre es administrador del clúster; añade a las personas que operen con
+`cluster_admin_principal_arns`.
 
 > **Versión de Kubernetes.** `kubernetes_version = "1.35"` con `support_type = STANDARD`. Al salir de soporte
 > estándar, EKS cobra seis veces el plano de control (soporte extendido): actualiza la versión antes
@@ -307,6 +361,55 @@ scripts/verificar-teardown.sh us-east-1       # exit 0 = no queda nada facturabl
 ≈ 20 min. Solo permanecen el bucket de estado, el proveedor OIDC y los roles de CI (sin costo). RDS no toma
 snapshot final ni tiene protección de borrado (`db_final_snapshot`, `db_deletion_protection`); actívalos si
 quieres conservar datos.
+
+Si el destroy de la plataforma se ejecuta tras un apply fallido o parcial, es seguro: destruye lo que exista y
+se puede repetir hasta que converja.
+
+## Errores frecuentes
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| `ExpiredToken` / token de seguridad caducado | Credenciales temporales (SSO/sesión) caducadas o `AWS_SESSION_TOKEN` antiguo | Renueva la sesión o, con claves de usuario, `unset AWS_SESSION_TOKEN AWS_PROFILE`; repite el comando |
+| `EntityAlreadyExists` al crear el proveedor OIDC | La cuenta ya tiene el proveedor de GitHub | `terraform -chdir=bootstrap apply -var create_github_oidc_provider=false` |
+| `AccessDenied` en `ssm:GetParameter` (u otro permiso) | El principal no es administrador | Usa `AdministratorAccess` en una cuenta de pruebas ([permisos](#permisos-del-principal-iam-remoto)) |
+| `AsgInstanceLaunchFailures ... quota for maximum Fleet Requests` | Cuota `L-1216C47A` de vCPU en 0 | Solicita ≥ 16 vCPU ([cuota](#cuota-de-vcpu-en-cuentas-nuevas)) y repite el apply |
+| `InvalidBucketName` | Se pasó el literal `<state_bucket>` | Reemplaza el marcador sin `< >`: `terraform -chdir=bootstrap output state_bucket` |
+| `Unauthorized` en `kubectl` | Tu ARN no está en `cluster_admin_principal_arns` (con SSO, debe ser el del rol) | Añádelo en `staging.tfvars`, repite el apply de la plataforma y `aws eks update-kubeconfig` |
+| `Can't locate revision` (Alembic) | El Job de migración se recreó con una imagen anterior a la que corre | Pasa en `image_tags` el SHA desplegado ([Baseline](#baseline)) |
+| Push a ECR rechazado por tag inmutable | Ya existe una imagen con ese SHA | No re-publiques el mismo SHA; haz un commit nuevo o usa otro tag |
+
+## Eliminar todo de la cuenta (limpieza total)
+
+Solo cuando abandones la cuenta. Normalmente el bootstrap **no** se destruye: no cuesta y evita repetir la
+configuración. Orden estricto: **baseline → plataforma → verificar-teardown → (solo al final) bootstrap**.
+
+1. Baseline y plataforma: los dos `destroy` de [Teardown](#teardown).
+2. `scripts/verificar-teardown.sh us-east-1` debe terminar con código 0.
+3. Bootstrap. El bucket de estado tiene versionado y `force_destroy = false`, así que Terraform **no** lo borra
+   mientras contenga objetos, versiones o delete markers (el código no usa `prevent_destroy`). Además, el
+   estado del bootstrap vive en ese mismo bucket, por lo que primero hay que devolverlo a local:
+
+   ```sh
+   # a) En bootstrap/versions.tf vuelve a comentar el bloque backend "s3" y migra el estado a local
+   terraform -chdir=bootstrap init -migrate-state
+
+   # b) Vacía el bucket incluidas TODAS las versiones y delete markers (`aws s3 rm --recursive` no basta)
+   BUCKET=$(terraform -chdir=bootstrap output -raw state_bucket)
+   aws s3api delete-objects --bucket "$BUCKET" --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+     --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json)"
+   aws s3api delete-objects --bucket "$BUCKET" --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+     --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' --output json)"
+   # Repite hasta que list-object-versions no devuelva nada (máx. 1000 por llamada; un resultado null
+   # indica que no queda ese tipo). Alternativa: botón Empty en la consola de S3.
+
+   # c) Destruye (con el mismo valor de create_github_oidc_provider que usaste al crear)
+   terraform -chdir=bootstrap destroy -var create_github_oidc_provider=<true|false>
+   ```
+
+   Con `create_github_oidc_provider=false` el proveedor OIDC (que no gestiona este código) se conserva.
+4. Comprobación manual en la consola, en `us-east-1` y en cualquier otra región usada: EKS, RDS (y snapshots),
+   ElastiCache, NAT gateways, Elastic IPs, ECR, Secrets Manager y buckets S3. Cost Explorer (filtrado por la
+   etiqueta `Project`) confirma que el gasto deja de crecer.
 
 ## Notas operativas
 
