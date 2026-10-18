@@ -66,6 +66,18 @@ run "each_role_owns_only_its_schemas" {
     condition     = !strcontains(output.access_sql, "DROP SCHEMA")
     error_message = "RULE no-drop: no schema may be dropped unless listed in drop_schemas."
   }
+
+  # RDS: el administrador es rds_superuser, no superusuario. PostgreSQL 16 rechaza un ALTER ROLE que nombre
+  # NOSUPERUSER (permission denied to alter role). Los atributos los fija el CREATE ROLE.
+  assert {
+    condition     = strcontains(output.access_sql, "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT")
+    error_message = "RULE role-attributes: CREATE ROLE must set the unprivileged attributes."
+  }
+
+  assert {
+    condition     = strcontains(output.access_sql, "ALTER ROLE %I WITH LOGIN PASSWORD %L") && !strcontains(output.access_sql, "ALTER ROLE %I WITH LOGIN NOSUPERUSER")
+    error_message = "RULE rds-alter-role: ALTER ROLE must not name superuser attributes (fails on RDS for a non-superuser admin)."
+  }
 }
 
 run "v2_schema_with_two_owners_fails" {

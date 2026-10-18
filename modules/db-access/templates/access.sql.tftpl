@@ -11,7 +11,8 @@
 %{ for s in services ~}
 SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT', '${s.role}')
  WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${s.role}') \gexec
-SELECT format('ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOINHERIT PASSWORD %L', '${s.role}', :'pw_${s.role}') \gexec
+-- Sin NOSUPERUSER & co. aquí: en RDS el administrador no es superusuario y PostgreSQL 16 rechaza nombrarlos; ya los fija el CREATE ROLE.
+SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', '${s.role}', :'pw_${s.role}') \gexec
 COMMENT ON ROLE "${s.role}" IS 'managed-by=solventa-platform';
 -- El administrador necesita pertenecer al rol para poder transferir la propiedad de los objetos.
 SELECT format('GRANT %I TO CURRENT_USER WITH INHERIT TRUE, SET TRUE', '${s.role}') \gexec
