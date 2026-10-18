@@ -18,6 +18,10 @@ variable "services" {
     migration_command = optional(list(string))
     run_as_non_root   = optional(bool, false)
     role_name         = string
+    edge = optional(object({
+      node_port     = number
+      path_prefixes = list(string)
+    }))
   }))
 }
 
