@@ -327,6 +327,11 @@ Notas:
   `secret_env_vars: { VARIABLE: solventa/staging/<nombre> }`. `platform` crea el secreto una sola vez con un valor aleatorio
   (no vive en git ni en variables) y el baseline lo entrega como variable de entorno por ExternalSecret. Los dos servicios
   que apuntan al mismo nombre reciben el mismo valor. Solo aplica a AWS; `local/kind` no lo provee.
+- **Clave de auditor (HU14/HU11):** `solventa-backend` recibe `AUDITOR_API_KEYS` desde `solventa/staging/auditor-api-key`
+  (valor aleatorio creado por `platform`). Quien audite lada en la cabecera `X-Service-Key` de
+  `GET /v1/cotizaciones/{id}/desglose` y `/consultas-externas`. Para leerla:
+  `aws secretsmanager get-secret-value --secret-id solventa/staging/auditor-api-key --query SecretString --output text`
+  (la propiedad es `value`). Es provisional hasta los roles internos (F26).
 - **Evidencias KYC (HU02):** `platform` crea el bucket `solventa-<env>-kyc-evidencias-<cuenta>` (cifrado, sin acceso público,
   solo TLS, versionado y con retención de 90 días) y autoriza por Pod Identity únicamente a la cuenta de servicio
   `solventa-identidad` con `s3:PutObject` bajo `kyc/`. El baseline entrega el nombre y la región al servicio

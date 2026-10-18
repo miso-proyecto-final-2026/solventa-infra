@@ -27,6 +27,10 @@ services:
     # Misma clave que Identidad acepta en SERVICE_API_KEYS; nace en Secrets Manager, nunca en git.
     secret_env_vars:
       IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
+      # Clave de auditor (HU14/HU11): habilita GET /v1/cotizaciones/{id}/desglose y /consultas-externas
+      # con la cabecera X-Service-Key. Sin ella esos endpoints responden 403 (falla cerrado).
+      # Provisional hasta los roles internos (F26). Se lee de Secrets Manager; nunca vive en git.
+      AUDITOR_API_KEYS: solventa/staging/auditor-api-key
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend
