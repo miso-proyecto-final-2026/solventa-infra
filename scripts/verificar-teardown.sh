@@ -80,6 +80,46 @@ else
   echo "(ninguno)"
 fi
 
+# Borde público (módulos nlb, api-gateway y cloudfront): lo crea Terraform, pero un destroy a medias lo deja facturando.
+echo "== NLB del borde ($CLUSTER_NAME-nlb)"
+nlb=$(aws elbv2 describe-load-balancers \
+  --region "$REGION" \
+  --query "LoadBalancers[?LoadBalancerName=='$CLUSTER_NAME-nlb'].LoadBalancerArn" --output text 2>/dev/null || true)
+if [ -n "$nlb" ]; then
+  echo "$nlb" | tr '\t' '\n'
+  remaining=1
+else
+  echo "(ninguno)"
+fi
+
+echo "== API Gateway y VPC Link del borde"
+apigw=$(aws apigatewayv2 get-apis \
+  --region "$REGION" \
+  --query "Items[?Name=='$CLUSTER_NAME-api'].ApiId" --output text 2>/dev/null || true)
+vpclinks=$(aws apigatewayv2 get-vpc-links \
+  --region "$REGION" \
+  --query "Items[?Name=='$CLUSTER_NAME-nlb'].VpcLinkId" --output text 2>/dev/null || true)
+if [ -n "$apigw$vpclinks" ]; then
+  echo "$apigw $vpclinks" | tr ' \t' '\n\n' | sed '/^$/d'
+  remaining=1
+else
+  echo "(ninguno)"
+fi
+
+echo "== Distribuciones de CloudFront y WAF del borde (servicios globales: región us-east-1)"
+cf=$(aws cloudfront list-distributions \
+  --query "DistributionList.Items[?starts_with(Comment, '$CLUSTER_NAME:')].Id" --output text 2>/dev/null || true)
+# Sin distribuciones la CLI imprime "None" en lugar de una cadena vacía.
+[ "$cf" = "None" ] && cf=""
+waf=$(aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 \
+  --query "WebACLs[?Name=='$CLUSTER_NAME-edge'].Name" --output text 2>/dev/null || true)
+if [ -n "$cf$waf" ]; then
+  echo "$cf $waf" | tr ' \t' '\n\n' | sed '/^$/d'
+  remaining=1
+else
+  echo "(ninguna)"
+fi
+
 if [ "$remaining" -ne 0 ]; then
   echo "FALLO: quedan recursos de staging. Revísalos y elimínalos antes de dar por terminado el teardown." >&2
   exit 1

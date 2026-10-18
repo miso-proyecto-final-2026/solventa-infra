@@ -26,6 +26,11 @@ variable "config" {
       migration_command = optional(list(string))
       run_as_non_root   = optional(bool, false)
       deploy_repository = optional(string)
+      # Exposición pública (API Gateway → NLB → NodePort). Sin `edge` el servicio solo es interno.
+      edge = optional(object({
+        node_port     = number
+        path_prefixes = list(string)
+      }))
     }))
   })
 
@@ -165,5 +170,27 @@ variable "config" {
       ])
     ])
     error_message = "A secret_env_vars entry collides with a connection variable or a setting, or its secret name does not start with \"solventa/\"."
+  }
+
+  # V9: exposición pública: NodePort válido y único, y prefijos de ruta absolutos, sin barra final y no repetidos
+  validation {
+    condition = alltrue([
+      for s in var.config.services : s.edge == null ? true : (
+        s.edge.node_port >= 30000 && s.edge.node_port <= 32767
+        && length(s.edge.path_prefixes) > 0
+        && alltrue([for p in s.edge.path_prefixes : can(regex("^/[a-z0-9/_-]*[a-z0-9_-]$", p))])
+      )
+    ])
+    error_message = "A service has an invalid edge: node_port must be 30000-32767 and path_prefixes absolute paths without trailing slash."
+  }
+
+  validation {
+    condition = (
+      length(distinct([for s in var.config.services : s.edge.node_port if s.edge != null]))
+      == length([for s in var.config.services : s.edge.node_port if s.edge != null])
+      && length(distinct(flatten([for s in var.config.services : s.edge.path_prefixes if s.edge != null])))
+      == length(flatten([for s in var.config.services : s.edge.path_prefixes if s.edge != null]))
+    )
+    error_message = "edge.node_port and edge.path_prefixes must be unique across services."
   }
 }

@@ -22,6 +22,12 @@ locals {
   deploy_role_arns = { for name, s in module.service_list.services : name => "arn:aws:iam::${local.account_id}:role/solventa-ci-deploy-${name}" }
 }
 
+locals {
+  # Servicios con exposición pública (campo `edge` de services.yaml).
+  edge_services = { for name, s in module.service_list.services : name => s if s.edge != null }
+  edge_enabled  = var.enable_edge && length(local.edge_services) > 0
+}
+
 module "service_list" {
   source = "../../../modules/service-list"
 
@@ -140,4 +146,56 @@ module "service_secrets" {
 
   secret_prefix = "solventa/${var.name}"
   tags          = local.tags
+}
+
+# Borde público según la arquitectura: CloudFront (TLS) + WAF → API Gateway → NLB interno → NodePort de cada servicio.
+# Todo lo crea Terraform: el destroy no depende de Kubernetes ni deja balanceadores huérfanos.
+module "nlb" {
+  source = "../../../modules/nlb"
+  count  = local.edge_enabled ? 1 : 0
+
+  name                    = local.cluster_name
+  vpc_id                  = module.network.vpc_id
+  vpc_cidr                = var.vpc_cidr
+  subnet_ids              = module.network.private_subnet_ids
+  node_security_group_id  = module.eks.node_security_group_id
+  autoscaling_group_names = module.eks.node_autoscaling_group_names
+  services                = { for name, s in local.edge_services : name => { node_port = s.edge.node_port } }
+
+  tags = local.tags
+}
+
+module "api_gateway" {
+  source = "../../../modules/api-gateway"
+  count  = local.edge_enabled ? 1 : 0
+
+  name       = local.cluster_name
+  vpc_id     = module.network.vpc_id
+  vpc_cidr   = var.vpc_cidr
+  subnet_ids = module.network.private_subnet_ids
+  services = {
+    for name, s in local.edge_services : name => {
+      listener_arn  = module.nlb[0].listener_arns[name]
+      node_port     = s.edge.node_port
+      path_prefixes = s.edge.path_prefixes
+    }
+  }
+
+  throttling_rate_limit  = var.edge_throttling_rate_limit
+  throttling_burst_limit = var.edge_throttling_burst_limit
+
+  tags = local.tags
+}
+
+module "cloudfront" {
+  source = "../../../modules/cloudfront"
+  count  = local.edge_enabled ? 1 : 0
+
+  name              = local.cluster_name
+  origin_domain     = module.api_gateway[0].domain_name
+  allowed_countries = var.edge_allowed_countries
+
+  rate_limit_per_5min = var.edge_rate_limit_per_5min
+
+  tags = local.tags
 }

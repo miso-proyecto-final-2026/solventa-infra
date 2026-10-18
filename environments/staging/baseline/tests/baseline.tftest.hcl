@@ -77,6 +77,13 @@ run "plan_produces_the_full_workload_set" {
     condition     = startswith(output.db_access_job, "db-access-")
     error_message = "The baseline must run the db-access Job."
   }
+
+  # El tipo de `services` del módulo baseline descarta en silencio los atributos que no declara:
+  # sin `edge` en él, el borde público recibiría 503 porque no existiría ningún NodePort.
+  assert {
+    condition     = output.edge_node_ports["solventa-backend"] == 30080 && output.edge_node_ports["solventa-identidad"] == 30081
+    error_message = "RULE edge-nodeport: the baseline must create the NodePort Services declared under edge in services.yaml."
+  }
 }
 
 run "missing_image_fails_before_any_workload" {

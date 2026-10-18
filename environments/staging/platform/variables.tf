@@ -121,3 +121,33 @@ variable "enable_control_plane_logging" {
   type        = bool
   default     = false
 }
+
+variable "enable_edge" {
+  description = "Crear el borde público (CloudFront + WAF, API Gateway y NLB). Sin él los servicios solo son internos."
+  type        = bool
+  default     = true
+}
+
+variable "edge_allowed_countries" {
+  description = "Países permitidos por el WAF (ISO 3166-1 alfa-2); el resto se bloquea."
+  type        = list(string)
+  default     = ["CO", "US"]
+}
+
+variable "edge_rate_limit_per_5min" {
+  description = "Máximo de solicitudes por IP en 5 minutos antes de responder 429 en el WAF."
+  type        = number
+  default     = 1000
+}
+
+variable "edge_throttling_rate_limit" {
+  description = "Solicitudes por segundo sostenidas que admite el API Gateway."
+  type        = number
+  default     = 200
+}
+
+variable "edge_throttling_burst_limit" {
+  description = "Ráfaga máxima del API Gateway."
+  type        = number
+  default     = 400
+}

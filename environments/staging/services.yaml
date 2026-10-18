@@ -30,6 +30,10 @@ services:
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend
+    # Borde público: CloudFront + WAF → API Gateway → NLB → este NodePort.
+    edge:
+      node_port: 30080
+      path_prefixes: [/v1/cotizaciones]
 
   - name: solventa-identidad          # MS Identidad (ADR-0001): clientes, sesión y consentimiento; esquema propio `identidad`
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
@@ -48,3 +52,6 @@ services:
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
+    edge:
+      node_port: 30081
+      path_prefixes: [/v1/clientes]

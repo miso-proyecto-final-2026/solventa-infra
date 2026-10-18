@@ -201,3 +201,40 @@ run "shared_secret_is_injected_from_the_secret_store" {
     error_message = "RULE no-secrets-in-state: the manifest must hold references, never secret values."
   }
 }
+
+run "exposed_service_gets_a_fixed_node_port_and_internal_service_does_not" {
+  command = plan
+
+  variables {
+    service = {
+      image_tag   = "abc1234"
+      port        = 8000
+      health_path = "/health"
+      resources = {
+        requests = { cpu = "100m", memory = "128Mi" }
+        limits   = { cpu = "500m", memory = "256Mi" }
+      }
+      replicas = { min = 2, max = 4 }
+      edge     = { node_port = 30080, path_prefixes = ["/v1/cotizaciones"] }
+    }
+  }
+
+  assert {
+    condition     = length(kubernetes_service_v1.edge) == 1 && kubernetes_service_v1.edge[0].spec[0].type == "NodePort" && kubernetes_service_v1.edge[0].spec[0].port[0].node_port == 30080
+    error_message = "RULE edge-nodeport: an exposed service needs a NodePort Service on its fixed port."
+  }
+
+  assert {
+    condition     = kubernetes_service_v1.this.spec[0].type == "ClusterIP"
+    error_message = "RULE no-loadbalancer: the main Service stays ClusterIP; the cluster never creates load balancers."
+  }
+}
+
+run "service_without_edge_has_no_node_port" {
+  command = plan
+
+  assert {
+    condition     = length(kubernetes_service_v1.edge) == 0
+    error_message = "RULE edge-optional: a service without edge must not get a NodePort Service."
+  }
+}

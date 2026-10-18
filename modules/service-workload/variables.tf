@@ -13,8 +13,12 @@ variable "service" {
       requests = object({ cpu = string, memory = string })
       limits   = object({ cpu = string, memory = string })
     })
-    replicas          = object({ min = number, max = number })
-    autoscaling       = optional(object({ cpu_target_percent = optional(number, 70) }), {})
+    replicas    = object({ min = number, max = number })
+    autoscaling = optional(object({ cpu_target_percent = optional(number, 70) }), {})
+    edge = optional(object({
+      node_port     = number
+      path_prefixes = list(string)
+    }))
     database_env_vars = optional(list(string), ["DATABASE_URL"])
     cache_env_var     = optional(string)
     settings          = optional(map(string), {})

@@ -79,3 +79,18 @@ output "kyc_evidencias_bucket" {
   description = "Bucket de evidencias KYC (solo referencia)."
   value       = module.kyc_evidencias.bucket_name
 }
+
+output "public_url" {
+  description = "URL pública del borde (CloudFront); null si el borde está desactivado."
+  value       = local.edge_enabled ? module.cloudfront[0].url : null
+}
+
+output "api_gateway_endpoint" {
+  description = "Endpoint directo del API Gateway; el tráfico de clientes debe entrar por public_url."
+  value       = local.edge_enabled ? module.api_gateway[0].api_endpoint : null
+}
+
+output "nlb_dns_name" {
+  description = "DNS interno del NLB (solo alcanzable desde la VPC)."
+  value       = local.edge_enabled ? module.nlb[0].dns_name : null
+}
