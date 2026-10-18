@@ -22,3 +22,8 @@ output "eso_pod_identity_role_arn" {
   description = "Rol asociado a external-secrets/external-secrets mediante Pod Identity."
   value       = aws_iam_role.eso.arn
 }
+
+output "node_autoscaling_group_names" {
+  description = "Grupo de autoescalado de cada node group (clave = nombre del node group, estática): el NLB registra ahí los nodos."
+  value       = { for k, g in module.eks.eks_managed_node_groups : k => one(g.node_group_autoscaling_group_names) }
+}

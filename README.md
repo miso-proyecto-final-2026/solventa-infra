@@ -21,13 +21,14 @@ ECR y Secrets Manager, más todo lo necesario para validarla **sin cuenta de AWS
 8. [Baseline](#baseline)
 9. [Verificación de migraciones](#verificación-de-migraciones)
 10. [Acceso privado al backend y pruebas de humo](#acceso-privado-al-backend-y-pruebas-de-humo)
-11. [Añadir un microservicio](#añadir-un-microservicio)
-12. [CI/CD](#cicd)
-13. [Drill HA04](#drill-ha04)
-14. [Teardown](#teardown)
-15. [Errores frecuentes](#errores-frecuentes)
-16. [Eliminar todo de la cuenta (limpieza total)](#eliminar-todo-de-la-cuenta-limpieza-total)
-17. [Notas operativas](#notas-operativas)
+11. [Borde público](#borde-público)
+12. [Añadir un microservicio](#añadir-un-microservicio)
+13. [CI/CD](#cicd)
+14. [Drill HA04](#drill-ha04)
+15. [Teardown](#teardown)
+16. [Errores frecuentes](#errores-frecuentes)
+17. [Eliminar todo de la cuenta (limpieza total)](#eliminar-todo-de-la-cuenta-limpieza-total)
+18. [Notas operativas](#notas-operativas)
 
 ## Arquitectura
 
@@ -280,6 +281,37 @@ curl -s -XPOST localhost:8000/v1/cotizaciones -H 'Content-Type: application/json
 - **Persistencia:** desde un pod efímero en `solventa-system` con `psql`, comprueba la fila en `cotizacion.cotizaciones`.
 - **Caché:** repetir la petición con el mismo `cliente_id` devuelve `metadata.hit_cache: true`.
 
+## Borde público
+
+Implementa la ruta de entrada del documento de arquitectura: **cliente → CloudFront (TLS) + WAF → API Gateway → NLB interno → NodePort de cada servicio**. Se crea en la etapa `platform` (variable `enable_edge`, activa por defecto) y lo crea todo Terraform: el clúster no crea balanceadores, así que el destroy no deja ninguno huérfano.
+
+| Módulo | Qué crea |
+|---|---|
+| `modules/cloudfront` | Distribución de CloudFront (HTTPS, sin caché de la API, sin Host) y el WAF vinculado |
+| `modules/api-gateway` | HTTP API, VPC Link, una integración por servicio y rutas por prefijo (`/v1/cotizaciones`, `/v1/clientes`) con throttling |
+| `modules/nlb` | NLB interno multi-AZ (capa 4), un listener y un grupo de destinos por servicio, y los nodos registrados desde su grupo de autoescalado |
+| `modules/service-workload` | Un Service `NodePort` fijo (`<servicio>-edge`) por servicio expuesto |
+
+Un servicio se expone declarando `edge` en `environments/staging/services.yaml` (contrato C1, regla V9):
+
+```yaml
+edge:
+  node_port: 30080                  # 30000-32767, único; el listener del NLB usa el mismo puerto
+  path_prefixes: [/v1/cotizaciones] # absolutos, sin barra final, únicos entre servicios
+```
+
+Reglas del WAF (sección 5.3 de la documentación técnica): SQL injection (conjunto administrado de AWS), XSS, rate limiting global de 1000 solicitudes por IP en 5 minutos (429), geo blocking fuera de CO y US (`edge_allowed_countries`) y cuerpo máximo de 256 KB (413).
+
+**Exención de la verificación de identidad.** La subida de HU02 (`POST /v1/clientes/{id}/verificaciones`) es multipart con tres imágenes: supera 256 KB y es binaria. Esa única ruta queda exenta del límite de cuerpo y de la inspección de contenido (`exempt_body_path_regex`); el servicio ya rechaza las imágenes que superan su máximo.
+
+Salidas de `platform`: `public_url` (la URL que usan la app y los compañeros), `api_gateway_endpoint` y `nlb_dns_name`.
+
+Limitaciones conocidas:
+- **El API Gateway tiene endpoint público propio** (`api_gateway_endpoint`) y se puede llamar sin pasar por CloudFront ni el WAF. Cerrarlo requiere un dominio propio o un autorizador; los clientes deben usar `public_url`.
+- **No se valida OAuth2/OIDC en el borde todavía.** MS Identidad emite un token opaco propio, no un JWT; cada servicio lo valida. Falta el rate limiting por socio (`cuota_rps`).
+- **CloudFront tarda en crearse y destruirse** (varios minutos cada vez). El WAF de alcance CLOUDFRONT solo existe en `us-east-1`.
+- Un destroy a medias deja el borde facturando: `scripts/verificar-teardown.sh` lo comprueba (NLB, API Gateway, VPC Link, distribución y WAF).
+
 ## Añadir un microservicio
 
 1. Añade una entrada a `environments/staging/services.yaml` (formato en `specs/001-aws-eks-staging-infra/contracts/service-entry.md`).
@@ -425,5 +457,5 @@ configuración. Orden estricto: **baseline → plataforma → verificar-teardown
 
 - Los secretos usan `recovery_window_in_days = 0` y ECR `force_delete = true`, para poder recrear todo al día siguiente.
 - El nombre de la imagen es inmutable por tag: re-ejecutar un job de CI para el mismo SHA falla al hacer push.
-- No existen volúmenes persistentes ni Services `LoadBalancer`, así que nada bloquea el destroy.
+- No existen volúmenes persistentes ni Services `LoadBalancer` (los `NodePort` del borde no crean balanceadores), así que nada bloquea el destroy.
 - Flujo de ramas y commits: ver [CONTRIBUTING.md](CONTRIBUTING.md) (`feat(HA04): …`, `ci(HA04): …`).

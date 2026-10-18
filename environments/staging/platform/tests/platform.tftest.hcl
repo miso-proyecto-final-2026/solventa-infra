@@ -41,6 +41,11 @@ override_data {
 }
 
 override_data {
+  target = module.cloudfront[0].data.aws_region.current
+  values = { region = "us-east-1" }
+}
+
+override_data {
   target = module.eks.data.aws_caller_identity.current
   values = { account_id = "123456789012" }
 }
@@ -168,4 +173,41 @@ run "minimum_node_count_is_enforced" {
   }
 
   expect_failures = [var.node_count]
+}
+
+run "edge_follows_the_architecture_path" {
+  command = plan
+
+  assert {
+    condition     = length(module.nlb) == 1 && length(module.api_gateway) == 1 && length(module.cloudfront) == 1
+    error_message = "RULE edge: CloudFront + WAF, API Gateway and the NLB must be created when services declare edge."
+  }
+
+  assert {
+    condition     = length(module.nlb[0].listener_arns) == 2
+    error_message = "RULE edge-services: solventa-backend and solventa-identidad must be exposed through the NLB."
+  }
+
+  assert {
+    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad"] : contains(keys(module.nlb[0].listener_arns), k)])
+    error_message = "RULE edge-wiring: each exposed service must have its own NLB listener."
+  }
+}
+
+run "edge_can_be_disabled" {
+  command = plan
+
+  variables {
+    enable_edge = false
+  }
+
+  assert {
+    condition     = length(module.nlb) == 0 && length(module.api_gateway) == 0 && length(module.cloudfront) == 0
+    error_message = "RULE edge-off: with enable_edge=false no edge resource is created."
+  }
+
+  assert {
+    condition     = output.public_url == null
+    error_message = "RULE edge-off: public_url must be null when the edge is disabled."
+  }
 }

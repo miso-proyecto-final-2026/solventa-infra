@@ -337,3 +337,191 @@ run "v8_secret_env_var_collides_with_a_setting" {
 
   expect_failures = [var.config]
 }
+
+run "v9_edge_valid_and_optional" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 30080, path_prefixes = ["/v1/a"] }
+        },
+        {
+          name        = "svc-b"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = null
+        },
+      ]
+    }
+  }
+
+  assert {
+    condition     = output.services["svc-a"].edge.node_port == 30080 && output.services["svc-b"].edge == null
+    error_message = "RULE v9: edge must pass through for exposed services and stay null for internal ones."
+  }
+}
+
+run "v9_duplicate_node_port" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 30080, path_prefixes = ["/v1/a"] }
+        },
+        {
+          name        = "svc-b"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 30080, path_prefixes = ["/v1/b"] }
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "v9_duplicate_path_prefix" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 30080, path_prefixes = ["/v1/a"] }
+        },
+        {
+          name        = "svc-b"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 30081, path_prefixes = ["/v1/a"] }
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "v9_node_port_out_of_range" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 8080, path_prefixes = ["/v1/a"] }
+        },
+        {
+          name        = "svc-b"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = null
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "v9_prefix_with_trailing_slash" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 30080, path_prefixes = ["/v1/a/"] }
+        },
+        {
+          name        = "svc-b"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = null
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}

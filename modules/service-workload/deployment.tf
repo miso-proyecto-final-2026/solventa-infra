@@ -146,6 +146,33 @@ resource "kubernetes_service_v1" "this" {
   }
 }
 
+# Puerta de entrada del NLB (borde público): un NodePort fijo, sin crear ningún balanceador desde Kubernetes.
+# El NLB lo crea Terraform en la etapa platform, así que el destroy no depende de un controlador (research R11).
+resource "kubernetes_service_v1" "edge" {
+  count = var.service.edge == null ? 0 : 1
+
+  metadata {
+    name      = "${var.name}-edge"
+    namespace = var.namespace
+    labels    = local.labels
+  }
+
+  spec {
+    type = "NodePort"
+
+    selector = {
+      "app.kubernetes.io/name" = var.name
+    }
+
+    port {
+      name        = "http"
+      port        = 80
+      target_port = "http"
+      node_port   = var.service.edge.node_port
+    }
+  }
+}
+
 resource "kubernetes_horizontal_pod_autoscaler_v2" "this" {
   metadata {
     name      = var.name
