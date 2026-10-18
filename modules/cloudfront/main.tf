@@ -11,7 +11,7 @@ locals {
 
 resource "aws_wafv2_web_acl" "this" {
   name        = "${var.name}-edge"
-  description = "WAF del borde público de Solventa"
+  description = "WAF del borde publico de Solventa"
   scope       = "CLOUDFRONT"
 
   default_action {
@@ -286,7 +286,7 @@ resource "aws_wafv2_web_acl" "this" {
 
 resource "aws_cloudfront_distribution" "this" {
   enabled         = true
-  comment         = "${var.name}: borde público de Solventa"
+  comment         = "${var.name}: borde publico de Solventa"
   http_version    = "http2and3"
   is_ipv6_enabled = true
   price_class     = "PriceClass_100"

@@ -67,6 +67,16 @@ run "throttling_is_enabled" {
   }
 }
 
+run "descriptions_use_the_character_set_aws_accepts" {
+  command = plan
+
+  # EC2 rechaza las tildes en la descripción de una regla de grupo de seguridad (InvalidParameterValue).
+  assert {
+    condition     = alltrue([for r in aws_vpc_security_group_egress_rule.to_nodeports : can(regex("^[a-zA-Z0-9._:/()#,@\\[\\]+=&;{}!$* -]+$", r.description))])
+    error_message = "RULE aws-charset: security group rule descriptions may only use a-zA-Z0-9 and ._-:/()#,@[]+=&;{}!$* (no accents)."
+  }
+}
+
 run "vpc_link_only_reaches_node_ports_inside_the_vpc" {
   command = plan
 

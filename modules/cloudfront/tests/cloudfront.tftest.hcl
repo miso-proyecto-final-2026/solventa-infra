@@ -40,6 +40,16 @@ run "waf_has_the_architecture_rules" {
   }
 }
 
+run "waf_description_matches_the_wafv2_pattern" {
+  command = plan
+
+  # WAFv2 rechaza las tildes en la descripción (ValidationException).
+  assert {
+    condition     = can(regex("^[\\w+=:#@/\\-,\\.][\\w+=:#@/\\-,\\.\\s]+[\\w+=:#@/\\-,\\.]$", aws_wafv2_web_acl.this.description))
+    error_message = "RULE waf-charset: the WAF description must match the WAFv2 pattern (no accents)."
+  }
+}
+
 run "rate_limit_is_1000_per_5_minutes_by_ip" {
   command = plan
 

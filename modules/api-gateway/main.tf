@@ -27,7 +27,7 @@ resource "aws_vpc_security_group_egress_rule" "to_nodeports" {
   for_each = var.services
 
   security_group_id = aws_security_group.vpc_link.id
-  description       = "Hacia el NodePort de ${each.key} a través del NLB"
+  description       = "Hacia el NodePort de ${each.key} por el NLB"
   ip_protocol       = "tcp"
   from_port         = each.value.node_port
   to_port           = each.value.node_port
@@ -47,7 +47,7 @@ resource "aws_apigatewayv2_vpc_link" "this" {
 resource "aws_apigatewayv2_api" "this" {
   name          = "${var.name}-api"
   protocol_type = "HTTP"
-  description   = "Punto único de entrada de Solventa (borde público)"
+  description   = "Punto unico de entrada de Solventa (borde publico)"
 
   tags = var.tags
 }
