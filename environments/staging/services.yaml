@@ -1,6 +1,6 @@
 # Lista única de microservicios (contrato C1). La leen bootstrap, platform y baseline.
 # Esquemas reservados para microservicios futuros (sin dueño, sin permisos).
-reserved_schemas: [perfilamiento, suscripcion, pagos, siniestros, socios]
+reserved_schemas: [suscripcion, pagos, siniestros, socios]
 
 # Solo se eliminan si están aquí Y no tienen dueño. Vacío por defecto.
 drop_schemas: []
@@ -59,3 +59,31 @@ services:
     edge:
       node_port: 30081
       path_prefixes: [/v1/clientes]
+
+  - name: solventa-perfilamiento      # MS Perfilamiento (HU23): enriquece el perfil de riesgo; esquema propio `perfilamiento`
+    image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    replicas: { min: 2, max: 10 }
+    autoscaling: { cpu_target_percent: 70 }
+    owned_schemas: [perfilamiento]
+    database_env_vars: [DATABASE_URL]  # el servicio acepta DATABASE_URL como alternativa a PERFILAMIENTO_DATABASE_URL
+    cache_env_var: REDIS_URL
+    settings:
+      # Consulta el consentimiento a MS Identidad por REST síncrono (ADR-0002); el Service es ClusterIP en el puerto 80.
+      IDENTIDAD_URL: http://solventa-identidad
+      IDENTIDAD_TIMEOUT_S: "0.3"
+    secret_env_vars:
+      # Misma clave que Identidad acepta en SERVICE_API_KEYS; nace en Secrets Manager, nunca en git.
+      IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
+      # Claves de los servicios que llaman a Perfilamiento (X-Service-Key). Vacía = nadie accede.
+      # Una clave sin nombre queda con el origen «servicio» en los intentos bloqueados.
+      PERFILAMIENTO_API_KEYS: solventa/staging/perfilamiento-api-key
+    migration_command: [alembic, upgrade, head]
+    run_as_non_root: false
+    deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
+    # Sin `edge`: es un servicio interno. Devuelve datos financieros del cliente y solo lo consumen otros servicios;
+    # no se publica por CloudFront ni por el API Gateway. Para probarlo, port-forward al Service (ver README).
