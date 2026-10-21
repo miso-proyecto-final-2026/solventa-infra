@@ -376,6 +376,7 @@ Variables y environments de GitHub (contrato C4):
 | `solventa-infra` | `AWS_APPLY_ROLE_ARN` | salida `infra_apply_role_arn` |
 | `solventa-infra` | `TF_STATE_BUCKET` | salida `state_bucket` |
 | `solventa-backend` | `AWS_ROLE_ARN` | `service_deploy_role_arns["solventa-backend"]` |
+| `solventa-backend` | `AWS_ROLE_ARN_PERFILAMIENTO` | `service_deploy_role_arns["solventa-perfilamiento"]` (HU23; habilita el job `deploy-staging-perfilamiento`) |
 
 - Ambos repositorios necesitan un environment llamado `staging` (la confianza OIDC de apply y deploy depende de él).
 - En `solventa-infra`, el environment `staging` **debe** tener revisores requeridos.
