@@ -281,6 +281,17 @@ curl -s -XPOST localhost:8000/v1/cotizaciones -H 'Content-Type: application/json
 - **Persistencia:** desde un pod efímero en `solventa-system` con `psql`, comprueba la fila en `cotizacion.cotizaciones`.
 - **Caché:** repetir la petición con el mismo `cliente_id` devuelve `metadata.hit_cache: true`.
 
+**MS Perfilamiento (HU23)** tampoco se publica por el borde: devuelve datos financieros del cliente y solo lo consumen otros servicios, así que su entrada en `services.yaml` no declara `edge`. Se prueba por túnel con su clave de servicio (el valor lo crea `platform` en `solventa/staging/perfilamiento-api-key`):
+
+```sh
+KEY=$(aws secretsmanager get-secret-value --secret-id solventa/staging/perfilamiento-api-key --query SecretString --output text | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
+kubectl -n staging port-forward svc/solventa-perfilamiento 8002:80 &
+curl -s -XPOST -H "X-Service-Key: $KEY" localhost:8002/v1/perfilamiento/smoke-1/enriquecer      # 201
+curl -s -H "X-Service-Key: $KEY" localhost:8002/v1/perfilamiento/smoke-1/linaje                 # fuentes, TTL y fechas
+```
+
+En Postman basta apuntar `perfilamiento_url` a `http://localhost:8002` mientras dure el túnel.
+
 ## Borde público
 
 Implementa la ruta de entrada del documento de arquitectura: **cliente → CloudFront (TLS) + WAF → API Gateway → NLB interno → NodePort de cada servicio**. Se crea en la etapa `platform` (variable `enable_edge`, activa por defecto) y lo crea todo Terraform: el clúster no crea balanceadores, así que el destroy no deja ninguno huérfano.
@@ -365,6 +376,7 @@ Variables y environments de GitHub (contrato C4):
 | `solventa-infra` | `AWS_APPLY_ROLE_ARN` | salida `infra_apply_role_arn` |
 | `solventa-infra` | `TF_STATE_BUCKET` | salida `state_bucket` |
 | `solventa-backend` | `AWS_ROLE_ARN` | `service_deploy_role_arns["solventa-backend"]` |
+| `solventa-backend` | `AWS_ROLE_ARN_PERFILAMIENTO` | `service_deploy_role_arns["solventa-perfilamiento"]` (HU23; habilita el job `deploy-staging-perfilamiento`) |
 
 - Ambos repositorios necesitan un environment llamado `staging` (la confianza OIDC de apply y deploy depende de él).
 - En `solventa-infra`, el environment `staging` **debe** tener revisores requeridos.

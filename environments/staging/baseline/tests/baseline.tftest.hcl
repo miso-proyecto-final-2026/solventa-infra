@@ -22,12 +22,14 @@ override_data {
       cache_secret_name      = "solventa/staging/cache"
       kyc_evidencias_bucket  = "solventa-staging-kyc-evidencias-123456789012"
       service_db_secret_names = {
-        "solventa-backend"   = "solventa/staging/solventa-backend/db"
-        "solventa-identidad" = "solventa/staging/solventa-identidad/db"
+        "solventa-backend"       = "solventa/staging/solventa-backend/db"
+        "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
+        "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
       }
       service_db_secret_versions = {
-        "solventa-backend"   = "11111111-2222-3333-4444-555555555555"
-        "solventa-identidad" = "66666666-7777-8888-9999-000000000000"
+        "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
+        "solventa-identidad"     = "66666666-7777-8888-9999-000000000000"
+        "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
       }
     }
   }
@@ -36,8 +38,9 @@ override_data {
 variables {
   state_bucket = "solventa-tfstate-123456789012-us-east-1"
   image_tags = {
-    "solventa-backend"   = "abc1234"
-    "solventa-identidad" = "abc1234"
+    "solventa-backend"       = "abc1234"
+    "solventa-identidad"     = "abc1234"
+    "solventa-perfilamiento" = "abc1234"
   }
 }
 
@@ -58,6 +61,13 @@ run "plan_produces_the_full_workload_set" {
     }
   }
 
+  override_data {
+    target = data.aws_ecr_images.service["solventa-perfilamiento"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
   assert {
     condition     = output.deployments["solventa-identidad"] == "solventa-identidad" && startswith(output.migration_jobs["solventa-identidad"], "solventa-identidad-migrate-")
     error_message = "The baseline must create the solventa-identidad Deployment and its migration Job."
@@ -71,6 +81,17 @@ run "plan_produces_the_full_workload_set" {
   assert {
     condition     = startswith(output.migration_jobs["solventa-backend"], "solventa-backend-migrate-")
     error_message = "The baseline must create the migration Job before the Deployment."
+  }
+
+  assert {
+    condition     = output.deployments["solventa-perfilamiento"] == "solventa-perfilamiento" && startswith(output.migration_jobs["solventa-perfilamiento"], "solventa-perfilamiento-migrate-")
+    error_message = "The baseline must create the solventa-perfilamiento Deployment and its migration Job."
+  }
+
+  # Perfilamiento es interno: sin `edge` no se publica por el borde.
+  assert {
+    condition     = !contains(keys(output.edge_node_ports), "solventa-perfilamiento")
+    error_message = "RULE internal-only: solventa-perfilamiento must not get an edge NodePort."
   }
 
   assert {
@@ -98,6 +119,13 @@ run "missing_image_fails_before_any_workload" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-identidad"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-perfilamiento"]
     values = {
       image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
     }
