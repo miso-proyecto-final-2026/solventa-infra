@@ -8,12 +8,12 @@ terraform {
     }
   }
 
-  # Primer apply con estado local; luego `terraform init -migrate-state` hacia el bucket creado
-  # (descomentar y completar `bucket`, ver README "Bootstrap").
-  # backend "s3" {
-  #   key          = "bootstrap/terraform.tfstate"
-  #   use_lockfile = true
-  # }
+  # Estado en el bucket que crea este mismo bootstrap. `bucket` y `region` se pasan al inicializar:
+  # `terraform init -reconfigure -backend-config=../environments/staging/backend.hcl`.
+  backend "s3" {
+    key          = "bootstrap/terraform.tfstate"
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
