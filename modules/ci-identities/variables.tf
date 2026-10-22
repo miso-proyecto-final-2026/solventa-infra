@@ -9,6 +9,28 @@ variable "deploy_repositories" {
   type        = map(string)
 }
 
+variable "github_ids" {
+  description = <<-EOT
+    IDs numéricos de GitHub para el subject OIDC inmutable (`repo:<owner>@<id-org>/<repo>@<id-repo>:...`), que GitHub
+    emite cuando el repositorio tiene `use_immutable_subject`. `repositories` va por `owner/repo`. No son secretos:
+    se obtienen con `gh api orgs/<owner> --jq .id` y `gh api repos/<owner>/<repo> --jq .id`.
+  EOT
+  type = object({
+    organization_id = string
+    repositories    = map(string)
+  })
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_ids.organization_id)) && alltrue([for id in values(var.github_ids.repositories) : can(regex("^[0-9]+$", id))])
+    error_message = "Los IDs de GitHub deben ser numéricos."
+  }
+
+  validation {
+    condition     = alltrue([for r in concat([var.infra_repository], values(var.deploy_repositories)) : contains(keys(var.github_ids.repositories), r)])
+    error_message = "github_ids.repositories debe traer el ID de infra_repository y de cada repositorio de deploy_repositories."
+  }
+}
+
 variable "create_github_oidc_provider" {
   description = "Crear el proveedor OIDC de GitHub. Poner false si la cuenta ya tiene uno."
   type        = bool

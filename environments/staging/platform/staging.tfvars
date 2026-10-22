@@ -14,7 +14,7 @@ node_count         = 3
 api_allowed_cidrs = ["0.0.0.0/0"]
 
 # Principales IAM adicionales con rol de administrador (el rol de apply de CI siempre se incluye).
-cluster_admin_principal_arns = []
+cluster_admin_principal_arns = ["arn:aws:iam::713729539331:user/solventa-terraform"]
 
 db_instance_class        = "db.t4g.micro"
 db_multi_az              = true

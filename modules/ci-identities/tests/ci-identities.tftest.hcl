@@ -25,6 +25,14 @@ override_data {
 }
 
 variables {
+  github_ids = {
+    organization_id = "111"
+    repositories = {
+      "miso-proyecto-final-2026/solventa-infra"   = "222"
+      "miso-proyecto-final-2026/solventa-backend" = "333"
+      "miso-proyecto-final-2026/ms-prueba"        = "444"
+    }
+  }
   deploy_repositories = {
     "solventa-backend" = "miso-proyecto-final-2026/solventa-backend"
     "ms-prueba"        = "miso-proyecto-final-2026/ms-prueba"
@@ -43,12 +51,12 @@ run "deploy_role_trust_is_limited_to_its_own_repository" {
   command = plan
 
   assert {
-    condition     = jsondecode(aws_iam_role.service_deploy["solventa-backend"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:miso-proyecto-final-2026/solventa-backend:environment:staging"
+    condition     = jsondecode(aws_iam_role.service_deploy["solventa-backend"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:miso-proyecto-final-2026@111/solventa-backend@333:environment:staging"
     error_message = "RULE deploy-role-trust: the deploy role trust must be limited to its own repository and the staging environment."
   }
 
   assert {
-    condition     = jsondecode(aws_iam_role.service_deploy["ms-prueba"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:miso-proyecto-final-2026/ms-prueba:environment:staging"
+    condition     = jsondecode(aws_iam_role.service_deploy["ms-prueba"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:miso-proyecto-final-2026@111/ms-prueba@444:environment:staging"
     error_message = "RULE deploy-role-trust: each service gets its own repository trust."
   }
 
@@ -102,7 +110,7 @@ run "plan_role_is_read_only" {
   assert {
     condition = alltrue([
       for p in jsondecode(aws_iam_role.infra_plan.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] :
-      startswith(p, "repo:miso-proyecto-final-2026/solventa-infra:")
+      startswith(p, "repo:miso-proyecto-final-2026@111/solventa-infra@222:")
     ])
     error_message = "RULE plan-role-trust: the plan role must trust only the infrastructure repository."
   }
@@ -112,7 +120,7 @@ run "apply_role_requires_the_staging_environment" {
   command = plan
 
   assert {
-    condition     = jsondecode(aws_iam_role.infra_apply.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:miso-proyecto-final-2026/solventa-infra:environment:staging"
+    condition     = jsondecode(aws_iam_role.infra_apply.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:miso-proyecto-final-2026@111/solventa-infra@222:environment:staging"
     error_message = "RULE apply-role-trust: the apply role must trust only the staging environment of the infra repository."
   }
 
@@ -146,4 +154,38 @@ run "tags_are_mandatory" {
   }
 
   expect_failures = [var.tags]
+}
+
+run "subject_uses_the_immutable_ids_not_the_names" {
+  command = plan
+
+  assert {
+    condition     = !strcontains(jsondecode(aws_iam_role.service_deploy["solventa-backend"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"], "miso-proyecto-final-2026/solventa-backend")
+    error_message = "RULE immutable-subject: the trust must use the numeric IDs GitHub emits, not repo names."
+  }
+}
+
+run "repository_without_id_fails_the_plan" {
+  command = plan
+
+  variables {
+    deploy_repositories = {
+      "sin-id" = "miso-proyecto-final-2026/sin-id"
+    }
+  }
+
+  expect_failures = [var.github_ids]
+}
+
+run "github_ids_must_be_numeric" {
+  command = plan
+
+  variables {
+    github_ids = {
+      organization_id = "no-numerico"
+      repositories    = {}
+    }
+  }
+
+  expect_failures = [var.github_ids]
 }

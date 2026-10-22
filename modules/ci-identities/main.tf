@@ -13,6 +13,13 @@ locals {
 
   state_bucket_arn = "arn:${local.partition}:s3:::${var.state_bucket_name}"
 
+  # GitHub emite el subject inmutable con los IDs de la organización y del repositorio, no con sus nombres:
+  # `repo:<owner>@<id-org>/<repo>@<id-repo>`. Un repositorio sin ID en `github_ids` falla el plan (índice inexistente).
+  subject_prefix = {
+    for r in distinct(concat([var.infra_repository], values(var.deploy_repositories))) :
+    r => "repo:${split("/", r)[0]}@${var.github_ids.organization_id}/${split("/", r)[1]}@${var.github_ids.repositories[r]}"
+  }
+
   # Los recursos de la plataforma usan nombres deterministas (research R8).
   platform_iam_prefix = "solventa-staging-"
   cluster_arn         = "arn:${local.partition}:eks:${local.region}:${local.account_id}:cluster/${var.cluster_name}"
@@ -45,8 +52,8 @@ resource "aws_iam_role" "infra_plan" {
         StringEquals = {
           "${local.oidc_host}:aud" = "sts.amazonaws.com"
           "${local.oidc_host}:sub" = [
-            "repo:${var.infra_repository}:pull_request",
-            "repo:${var.infra_repository}:ref:refs/heads/main",
+            "${local.subject_prefix[var.infra_repository]}:pull_request",
+            "${local.subject_prefix[var.infra_repository]}:ref:refs/heads/main",
           ]
         }
       }
@@ -109,7 +116,7 @@ resource "aws_iam_role" "infra_apply" {
       Condition = {
         StringEquals = {
           "${local.oidc_host}:aud" = "sts.amazonaws.com"
-          "${local.oidc_host}:sub" = "repo:${var.infra_repository}:environment:${var.environment_name}"
+          "${local.oidc_host}:sub" = "${local.subject_prefix[var.infra_repository]}:environment:${var.environment_name}"
         }
       }
     }]
@@ -198,7 +205,7 @@ resource "aws_iam_role" "service_deploy" {
       Condition = {
         StringEquals = {
           "${local.oidc_host}:aud" = "sts.amazonaws.com"
-          "${local.oidc_host}:sub" = "repo:${each.value}:environment:${var.environment_name}"
+          "${local.oidc_host}:sub" = "${local.subject_prefix[each.value]}:environment:${var.environment_name}"
         }
       }
     }]

@@ -85,6 +85,7 @@ module "ci_identities" {
   source = "../modules/ci-identities"
 
   infra_repository            = var.infra_repository
+  github_ids                  = var.github_ids
   deploy_repositories         = { for name, s in module.service_list.services : name => s.deploy_repository }
   create_github_oidc_provider = var.create_github_oidc_provider
   state_bucket_name           = aws_s3_bucket.state.bucket

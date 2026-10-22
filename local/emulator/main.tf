@@ -44,7 +44,14 @@ module "ci_identities" {
   source = "../../modules/ci-identities"
 
   deploy_repositories = { for name, s in module.service_list.services : name => s.deploy_repository }
-  state_bucket_name   = aws_s3_bucket.state[0].bucket
+  # Moto no valida el subject: IDs ficticios para que la confianza se construya como en staging.
+  github_ids = {
+    organization_id = "1"
+    repositories = {
+      for r in distinct(concat(["miso-proyecto-final-2026/solventa-infra"], [for s in module.service_list.services : s.deploy_repository])) : r => "1"
+    }
+  }
+  state_bucket_name = aws_s3_bucket.state[0].bucket
   # Moto no precarga las políticas gestionadas de AWS (ReadOnlyAccess, PowerUserAccess).
   attach_managed_policies = false
   tags                    = local.tags
