@@ -27,6 +27,9 @@ services:
     # Misma clave que Identidad acepta en SERVICE_API_KEYS; nace en Secrets Manager, nunca en git.
     secret_env_vars:
       IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
+      # Token del asesor (HU38, ADR-0008): Identidad lo firma (HS256) y Cotización lo valida; mismo secreto en ambos.
+      # Sin él Cotización no arranca fuera de modo desarrollo. Nace aleatorio en Secrets Manager, nunca en git.
+      ASESOR_JWT_SECRETO: solventa/staging/asesor-jwt-secreto
       # Clave de auditor (HU14/HU11): habilita GET /v1/cotizaciones/{id}/desglose y /consultas-externas
       # con la cabecera X-Service-Key. Sin ella esos endpoints responden 403 (falla cerrado).
       # Provisional hasta los roles internos (F26). Se lee de Secrets Manager; nunca vive en git.
@@ -53,6 +56,7 @@ services:
     cache_env_var: ""                 # Identidad no usa Redis
     secret_env_vars:
       SERVICE_API_KEYS: solventa/staging/identidad-service-key
+      ASESOR_JWT_SECRETO: solventa/staging/asesor-jwt-secreto   # el mismo que valida MS Cotización
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
