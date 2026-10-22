@@ -10,6 +10,21 @@ variable "state_bucket_name" {
   default     = null
 }
 
+variable "github_ids" {
+  description = "IDs de GitHub (no secretos) para el subject OIDC inmutable: organización y cada repositorio con rol. Ver modules/ci-identities."
+  type = object({
+    organization_id = string
+    repositories    = map(string)
+  })
+  default = {
+    organization_id = "313182026"
+    repositories = {
+      "miso-proyecto-final-2026/solventa-infra"   = "1412530280"
+      "miso-proyecto-final-2026/solventa-backend" = "1412524586"
+    }
+  }
+}
+
 variable "infra_repository" {
   description = "Repositorio GitHub (owner/repo) de la infraestructura."
   type        = string
