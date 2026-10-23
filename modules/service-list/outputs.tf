@@ -22,3 +22,21 @@ output "schema_owner" {
   description = "Mapa esquema => servicio dueño."
   value       = local.schema_owner
 }
+
+output "topics" {
+  description = "Topics declarados, por nombre, con particiones, retención, clave de partición y si tienen cola de mensajes fallidos."
+  value       = { for t in var.config.topics : t.name => t }
+}
+
+output "topic_names" {
+  description = "Nombres de todos los topics a crear, incluidas las colas de mensajes fallidos (<topic>.dlq)."
+  value       = toset(flatten([for t in var.config.topics : t.dlq ? [t.name, "${t.name}.dlq"] : [t.name]]))
+}
+
+output "events_access" {
+  description = "Qué topics produce y consume cada servicio que usa el bus; los servicios sin eventos no aparecen."
+  value = {
+    for s in var.config.services : s.name => s.eventos
+    if length(concat(s.eventos.produce, s.eventos.consume)) > 0
+  }
+}

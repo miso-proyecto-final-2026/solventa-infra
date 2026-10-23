@@ -525,3 +525,144 @@ run "v9_prefix_with_trailing_slash" {
 
   expect_failures = [var.config]
 }
+
+# HS2: topics del bus de eventos y qué servicio produce o consume cada uno.
+run "events_access_and_topics_are_normalized" {
+  command = plan
+
+  variables {
+    config = {
+      topics = [
+        { name = "solventa.a.comandos", key = "suscripcion_id" },
+        { name = "solventa.b.resultados", key = "suscripcion_id", partitions = 6, dlq = false },
+      ]
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          eventos  = { produce = ["solventa.a.comandos"], consume = ["solventa.b.resultados"] }
+        },
+        {
+          name        = "svc-b"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+        },
+      ]
+    }
+  }
+
+  assert {
+    condition     = output.events_access["svc-a"].produce == tolist(["solventa.a.comandos"]) && output.events_access["svc-a"].consume == tolist(["solventa.b.resultados"])
+    error_message = "events_access must list what each service produces and consumes."
+  }
+
+  assert {
+    condition     = !contains(keys(output.events_access), "svc-b")
+    error_message = "A service without events is not part of events_access."
+  }
+
+  assert {
+    condition     = output.topics["solventa.a.comandos"].partitions == 3 && output.topics["solventa.a.comandos"].dlq == true && output.topics["solventa.b.resultados"].partitions == 6
+    error_message = "Topics default to 3 partitions and a dead-letter topic."
+  }
+
+  assert {
+    condition     = contains(output.topic_names, "solventa.a.comandos.dlq") && !contains(output.topic_names, "solventa.b.resultados.dlq")
+    error_message = "topic_names includes the dead-letter topic only for topics that ask for it."
+  }
+}
+
+run "a_service_cannot_use_an_undeclared_topic" {
+  command = plan
+
+  variables {
+    config = {
+      topics = [{ name = "solventa.a.comandos", key = "suscripcion_id" }]
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          eventos  = { produce = ["solventa.a.comandos"], consume = ["solventa.no.declarado"] }
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "topic_names_must_be_valid_and_unique" {
+  command = plan
+
+  variables {
+    config = {
+      topics = [
+        { name = "solventa.a.comandos", key = "x" },
+        { name = "solventa.a.comandos", key = "x" },
+      ]
+      services = []
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "a_topic_name_with_a_wildcard_is_rejected" {
+  command = plan
+
+  variables {
+    config = {
+      topics   = [{ name = "solventa.*", key = "x" }]
+      services = []
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "events_need_the_bootstrap_variable_free_for_the_platform" {
+  command = plan
+
+  variables {
+    config = {
+      topics = [{ name = "solventa.a.comandos", key = "x" }]
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          settings = { KAFKA_BOOTSTRAP_SERVERS = "algo-a-mano:9098" }
+          eventos  = { produce = ["solventa.a.comandos"] }
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}

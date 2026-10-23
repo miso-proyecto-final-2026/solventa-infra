@@ -94,3 +94,13 @@ output "nlb_dns_name" {
   description = "DNS interno del NLB (solo alcanzable desde la VPC)."
   value       = local.edge_enabled ? module.nlb[0].dns_name : null
 }
+
+output "kafka_bootstrap_brokers" {
+  description = "Brokers de MSK para clientes con SASL/IAM (puerto 9098). No es un secreto; null si enable_events es false."
+  value       = one(module.msk[*].bootstrap_brokers_sasl_iam)
+}
+
+output "kafka_cluster_arn" {
+  description = "ARN del clúster MSK; null si enable_events es false."
+  value       = one(module.msk[*].cluster_arn)
+}

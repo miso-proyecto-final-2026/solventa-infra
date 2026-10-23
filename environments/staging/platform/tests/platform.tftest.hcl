@@ -211,3 +211,45 @@ run "edge_can_be_disabled" {
     error_message = "RULE edge-off: public_url must be null when the edge is disabled."
   }
 }
+
+run "event_bus_is_part_of_the_platform_and_can_be_switched_off" {
+  command = plan
+
+  variables {
+    cluster_admin_principal_arns = ["arn:aws:iam::123456789012:user/operador"]
+  }
+
+  assert {
+    condition     = length(module.msk) == 1
+    error_message = "HS2: the event bus is created by default."
+  }
+
+  assert {
+    condition     = contains(keys(module.service_list.topics), "solventa.suscripcion.comandos") && contains(keys(module.service_list.topics), "solventa.pagos.resultados")
+    error_message = "HS2: the contract topics of section 4.2 are declared in services.yaml."
+  }
+
+  assert {
+    condition     = contains(module.service_list.topic_names, "solventa.identidad.consentimiento.dlq") && !contains(module.service_list.topic_names, "solventa.humo.dlq")
+    error_message = "HS2: every topic has a dead-letter topic except the smoke-test one."
+  }
+
+  assert {
+    condition     = contains(keys(module.msk[0].client_role_arns), "kafka-humo")
+    error_message = "HS2: the smoke test has its own minimal identity."
+  }
+}
+
+run "event_bus_off_creates_nothing" {
+  command = plan
+
+  variables {
+    cluster_admin_principal_arns = ["arn:aws:iam::123456789012:user/operador"]
+    enable_events                = false
+  }
+
+  assert {
+    condition     = length(module.msk) == 0 && output.kafka_bootstrap_brokers == null
+    error_message = "HS2: with enable_events = false there is no cluster and no broker output."
+  }
+}

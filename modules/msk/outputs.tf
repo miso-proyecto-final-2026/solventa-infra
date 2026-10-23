@@ -17,3 +17,13 @@ output "security_group_id" {
   description = "Security group de los brokers."
   value       = aws_security_group.this.id
 }
+
+output "client_role_arns" {
+  description = "Rol de Pod Identity de cada servicio con acceso al bus, por nombre."
+  value       = { for k, r in aws_iam_role.client : k => r.arn }
+}
+
+output "admin_role_arn" {
+  description = "Rol del Job que crea los topics (puede crearlos y ajustarlos, pero no leer ni escribir eventos)."
+  value       = aws_iam_role.admin.arn
+}
