@@ -152,6 +152,24 @@ variable "edge_throttling_burst_limit" {
   default     = 400
 }
 
+variable "edge_high_volume_rate_limit_per_5min" {
+  description = "Máximo de solicitudes por IP en 5 minutos en las rutas `high_volume` (proveedores de eventos) antes del 429 del WAF."
+  type        = number
+  default     = 600000 # ≈ 2.000 solicitudes por segundo desde una misma IP; la meta EC-E2.1 son ≈ 1.670/s
+}
+
+variable "edge_high_volume_throttling_rate_limit" {
+  description = "Solicitudes por segundo sostenidas por ruta `high_volume` en el API Gateway."
+  type        = number
+  default     = 2000
+}
+
+variable "edge_high_volume_throttling_burst_limit" {
+  description = "Ráfaga máxima por ruta `high_volume` en el API Gateway."
+  type        = number
+  default     = 4000
+}
+
 variable "enable_events" {
   description = "Crear el bus de eventos (MSK, HS2). Factura por hora y tarda ~25 min en crearse: apagarlo si la sesión no usa eventos."
   type        = bool

@@ -25,11 +25,13 @@ override_data {
         "solventa-backend"       = "solventa/staging/solventa-backend/db"
         "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
         "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
+        "solventa-siniestros"    = "solventa/staging/solventa-siniestros/db"
       }
       service_db_secret_versions = {
         "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
         "solventa-identidad"     = "66666666-7777-8888-9999-000000000000"
         "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        "solventa-siniestros"    = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
       }
     }
   }
@@ -41,6 +43,7 @@ variables {
     "solventa-backend"       = "abc1234"
     "solventa-identidad"     = "abc1234"
     "solventa-perfilamiento" = "abc1234"
+    "solventa-siniestros"    = "abc1234"
   }
 }
 
@@ -68,6 +71,13 @@ run "plan_produces_the_full_workload_set" {
     }
   }
 
+  override_data {
+    target = data.aws_ecr_images.service["solventa-siniestros"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
   assert {
     condition     = output.deployments["solventa-identidad"] == "solventa-identidad" && startswith(output.migration_jobs["solventa-identidad"], "solventa-identidad-migrate-")
     error_message = "The baseline must create the solventa-identidad Deployment and its migration Job."
@@ -86,6 +96,17 @@ run "plan_produces_the_full_workload_set" {
   assert {
     condition     = output.deployments["solventa-perfilamiento"] == "solventa-perfilamiento" && startswith(output.migration_jobs["solventa-perfilamiento"], "solventa-perfilamiento-migrate-")
     error_message = "The baseline must create the solventa-perfilamiento Deployment and its migration Job."
+  }
+
+  # HU27: Siniestros tiene su Deployment y su migración, y sí se publica por el borde (el proveedor de eventos es externo).
+  assert {
+    condition     = output.deployments["solventa-siniestros"] == "solventa-siniestros" && startswith(output.migration_jobs["solventa-siniestros"], "solventa-siniestros-migrate-")
+    error_message = "The baseline must create the solventa-siniestros Deployment and its migration Job."
+  }
+
+  assert {
+    condition     = output.edge_node_ports["solventa-siniestros"] == 30082
+    error_message = "RULE edge-nodeport: solventa-siniestros must get its edge NodePort (30082)."
   }
 
   # Perfilamiento es interno: sin `edge` no se publica por el borde.
@@ -126,6 +147,13 @@ run "missing_image_fails_before_any_workload" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-perfilamiento"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-siniestros"]
     values = {
       image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
     }
@@ -172,11 +200,13 @@ run "events_create_topics_and_inject_the_brokers" {
           "solventa-backend"       = "solventa/staging/solventa-backend/db"
           "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
           "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
+          "solventa-siniestros"    = "solventa/staging/solventa-siniestros/db"
         }
         service_db_secret_versions = {
           "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
           "solventa-identidad"     = "66666666-7777-8888-9999-000000000000"
           "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+          "solventa-siniestros"    = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
         }
       }
     }
@@ -197,9 +227,24 @@ run "events_create_topics_and_inject_the_brokers" {
     values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
   }
 
+  override_data {
+    target = data.aws_ecr_images.service["solventa-siniestros"]
+    values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
+  }
+
   assert {
     condition     = module.baseline.kafka_topics_job != null
     error_message = "HS2: with kafka_bootstrap_brokers in the platform, the topics Job exists."
+  }
+
+  assert {
+    condition     = contains(keys(module.service_list.events_access), "solventa-siniestros")
+    error_message = "HU27: solventa-siniestros declares eventos in services.yaml and must get bus access."
+  }
+
+  assert {
+    condition     = local.services["solventa-siniestros"].settings["AWS_DEFAULT_REGION"] == "us-east-1" && can(regex("9098", local.services["solventa-siniestros"].settings["KAFKA_BOOTSTRAP_SERVERS"]))
+    error_message = "HU27: a service with eventos receives the brokers and the region (the client signs the SASL/IAM token with it)."
   }
 
   assert {

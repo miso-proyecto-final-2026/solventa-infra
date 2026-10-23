@@ -105,3 +105,41 @@ run "waf_outside_us_east_1_fails" {
 
   expect_failures = [aws_wafv2_web_acl.this]
 }
+
+run "without_high_volume_paths_the_waf_keeps_only_the_global_rate_limit" {
+  command = plan
+
+  assert {
+    condition     = !contains([for r in aws_wafv2_web_acl.this.rule : r.name], "rate-limit-high-volume")
+    error_message = "RULE waf-high-volume: with no high-volume path there is no extra rate rule."
+  }
+}
+
+run "high_volume_paths_get_their_own_rate_limit_and_leave_the_global_one" {
+  command = plan
+
+  variables {
+    high_volume_path_regex = "^(/v1/siniestros)(/.*)?$"
+  }
+
+  assert {
+    condition = (
+      contains([for r in aws_wafv2_web_acl.this.rule : r.name], "rate-limit-high-volume")
+      && length(distinct([for r in aws_wafv2_web_acl.this.rule : r.priority])) == length(aws_wafv2_web_acl.this.rule)
+    )
+    error_message = "RULE waf-high-volume: a high-volume path adds its own rate rule with a unique priority."
+  }
+
+  assert {
+    condition = (
+      [for r in aws_wafv2_web_acl.this.rule : r.statement[0].rate_based_statement[0].limit if r.name == "rate-limit-high-volume"][0] == 600000
+      && [for r in aws_wafv2_web_acl.this.rule : r.statement[0].rate_based_statement[0].limit if r.name == "rate-limit-global"][0] == 1000
+    )
+    error_message = "RULE waf-high-volume: 600000 per 5 min for the high-volume path; the global limit stays at 1000."
+  }
+
+  assert {
+    condition     = length([for r in aws_wafv2_web_acl.this.rule : r if r.name == "rate-limit-global" && length(r.statement[0].rate_based_statement[0].scope_down_statement) == 1]) == 1
+    error_message = "RULE waf-high-volume: the global rate rule must not count the high-volume paths (scope-down)."
+  }
+}
