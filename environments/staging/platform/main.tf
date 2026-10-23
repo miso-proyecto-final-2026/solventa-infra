@@ -156,7 +156,8 @@ module "msk" {
   count  = var.enable_events ? 1 : 0
   source = "../../../modules/msk"
 
-  cluster_name              = local.cluster_name
+  # Del módulo de EKS (no de local.cluster_name): así Terraform crea el clúster antes que las asociaciones de Pod Identity.
+  cluster_name              = module.eks.cluster_name
   vpc_id                    = module.network.vpc_id
   subnet_ids                = module.network.private_subnet_ids
   allowed_security_group_id = module.eks.node_security_group_id

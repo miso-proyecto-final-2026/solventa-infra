@@ -267,3 +267,37 @@ run "tags_are_mandatory" {
 
   expect_failures = [var.tags]
 }
+
+run "small_brokers_cannot_use_kraft" {
+  command = plan
+
+  variables {
+    broker_node_type = "kafka.t3.small"
+    kafka_version    = "3.9.x.kraft"
+  }
+
+  expect_failures = [var.kafka_version]
+}
+
+run "kraft_is_fine_with_bigger_brokers" {
+  command = plan
+
+  variables {
+    broker_node_type = "kafka.m7g.large"
+    kafka_version    = "3.9.x.kraft"
+  }
+
+  assert {
+    condition     = aws_msk_cluster.this.kafka_version == "3.9.x.kraft"
+    error_message = "KRaft is allowed on m5/m7g brokers."
+  }
+}
+
+run "default_version_works_with_the_default_broker" {
+  command = plan
+
+  assert {
+    condition     = !endswith(aws_msk_cluster.this.kafka_version, ".kraft") && aws_msk_cluster.this.broker_node_group_info[0].instance_type == "kafka.t3.small"
+    error_message = "The defaults (kafka.t3.small and a ZooKeeper-based version) must be a combination MSK accepts."
+  }
+}
