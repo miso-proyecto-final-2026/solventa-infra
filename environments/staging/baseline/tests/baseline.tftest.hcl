@@ -25,11 +25,13 @@ override_data {
         "solventa-backend"       = "solventa/staging/solventa-backend/db"
         "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
         "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
+        "solventa-suscripcion"   = "solventa/staging/solventa-suscripcion/db"
       }
       service_db_secret_versions = {
         "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
         "solventa-identidad"     = "66666666-7777-8888-9999-000000000000"
         "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        "solventa-suscripcion"   = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
       }
     }
   }
@@ -41,6 +43,7 @@ variables {
     "solventa-backend"       = "abc1234"
     "solventa-identidad"     = "abc1234"
     "solventa-perfilamiento" = "abc1234"
+    "solventa-suscripcion"   = "abc1234"
   }
 }
 
@@ -63,6 +66,13 @@ run "plan_produces_the_full_workload_set" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-perfilamiento"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-suscripcion"]
     values = {
       image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
     }
@@ -95,6 +105,11 @@ run "plan_produces_the_full_workload_set" {
   }
 
   assert {
+    condition     = output.deployments["solventa-suscripcion"] == "solventa-suscripcion" && startswith(output.migration_jobs["solventa-suscripcion"], "solventa-suscripcion-migrate-")
+    error_message = "The baseline must create the solventa-suscripcion Deployment and its migration Job."
+  }
+
+  assert {
     condition     = startswith(output.db_access_job, "db-access-")
     error_message = "The baseline must run the db-access Job."
   }
@@ -102,7 +117,7 @@ run "plan_produces_the_full_workload_set" {
   # El tipo de `services` del módulo baseline descarta en silencio los atributos que no declara:
   # sin `edge` en él, el borde público recibiría 503 porque no existiría ningún NodePort.
   assert {
-    condition     = output.edge_node_ports["solventa-backend"] == 30080 && output.edge_node_ports["solventa-identidad"] == 30081
+    condition     = output.edge_node_ports["solventa-backend"] == 30080 && output.edge_node_ports["solventa-identidad"] == 30081 && output.edge_node_ports["solventa-suscripcion"] == 30082
     error_message = "RULE edge-nodeport: the baseline must create the NodePort Services declared under edge in services.yaml."
   }
 }
@@ -126,6 +141,13 @@ run "missing_image_fails_before_any_workload" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-perfilamiento"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-suscripcion"]
     values = {
       image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
     }
@@ -172,11 +194,13 @@ run "events_create_topics_and_inject_the_brokers" {
           "solventa-backend"       = "solventa/staging/solventa-backend/db"
           "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
           "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
+          "solventa-suscripcion"   = "solventa/staging/solventa-suscripcion/db"
         }
         service_db_secret_versions = {
           "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
           "solventa-identidad"     = "66666666-7777-8888-9999-000000000000"
           "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+          "solventa-suscripcion"   = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
         }
       }
     }
@@ -197,9 +221,19 @@ run "events_create_topics_and_inject_the_brokers" {
     values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
   }
 
+  override_data {
+    target = data.aws_ecr_images.service["solventa-suscripcion"]
+    values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
+  }
+
   assert {
     condition     = module.baseline.kafka_topics_job != null
     error_message = "HS2: with kafka_bootstrap_brokers in the platform, the topics Job exists."
+  }
+
+  assert {
+    condition     = toset(module.service_list.events_access["solventa-suscripcion"].produce) == toset(["solventa.suscripcion.comandos", "solventa.suscripcion.revision"])
+    error_message = "HU15: solventa-suscripcion publica solo sus dos topics."
   }
 
   assert {

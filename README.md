@@ -282,6 +282,8 @@ curl -s -XPOST localhost:8000/v1/cotizaciones -H 'Content-Type: application/json
 - **Persistencia:** desde un pod efímero en `solventa-system` con `psql`, comprueba la fila en `cotizacion.cotizaciones`.
 - **Caché:** repetir la petición con el mismo `cliente_id` devuelve `metadata.hit_cache: true`.
 
+**MS Suscripción (HU15)** sí se publica por el borde (`/v1/suscripciones`, NodePort 30082): la app móvil lo llama con el token del cliente. Depende de tres vecinos por REST interno (Identidad, Cotización y Perfilamiento, con sus claves de servicio en Secrets Manager) y **publica en el bus**, así que necesita `enable_events = true`: sin brokers no arranca fuera de modo desarrollo. Al agregarlo, `bootstrap` crea su rol de despliegue y su repositorio de imágenes: actualice la variable `AWS_DEPLOY_ROLE_ARNS` del repo del backend con la salida `service_deploy_role_arns` antes del primer `cicd/deploy-staging`.
+
 **MS Perfilamiento (HU23)** tampoco se publica por el borde: devuelve datos financieros del cliente y solo lo consumen otros servicios, así que su entrada en `services.yaml` no declara `edge`. Se prueba por túnel con su clave de servicio (el valor lo crea `platform` en `solventa/staging/perfilamiento-api-key`):
 
 ```sh

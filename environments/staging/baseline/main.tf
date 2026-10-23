@@ -45,7 +45,8 @@ locals {
       settings = merge(
         s.settings,
         lookup(local.platform_settings, name, {}),
-        lookup(local.events_settings, name, {}),
+        # try() y no lookup(): con `events_settings` vacío o con objetos, el valor por defecto `{}` no tiene el mismo tipo.
+        try(local.events_settings[name], {}),
       )
     })
   }
