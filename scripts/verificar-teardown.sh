@@ -120,6 +120,23 @@ else
   echo "(ninguna)"
 fi
 
+echo "== Clúster MSK del bus de eventos ($CLUSTER_NAME-events) y su grupo de logs (facturan por hora)"
+msk=$(aws kafka list-clusters-v2 \
+  --region "$REGION" --cluster-name-filter "$CLUSTER_NAME-events" \
+  --query "ClusterInfoList[].join(' ', [ClusterArn, State])" --output text 2>/dev/null || true)
+[ "$msk" = "None" ] && msk=""
+msklogs=$(aws logs describe-log-groups \
+  --region "$REGION" --log-group-name-prefix "/aws/msk/$CLUSTER_NAME-events" \
+  --query "logGroups[].logGroupName" --output text 2>/dev/null || true)
+[ "$msklogs" = "None" ] && msklogs=""
+if [ -n "$msk$msklogs" ]; then
+  [ -n "$msk" ] && echo "$msk"
+  [ -n "$msklogs" ] && echo "$msklogs" | tr '\t' '\n'
+  remaining=1
+else
+  echo "(ninguno)"
+fi
+
 if [ "$remaining" -ne 0 ]; then
   echo "FALLO: quedan recursos de staging. Revísalos y elimínalos antes de dar por terminado el teardown." >&2
   exit 1

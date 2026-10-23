@@ -5,6 +5,22 @@ reserved_schemas: [suscripcion, pagos, siniestros, socios]
 # Solo se eliminan si están aquí Y no tienen dueño. Vacío por defecto.
 drop_schemas: []
 
+# Topics del bus de eventos (MSK, HS2). Contrato de la documentación técnica §4.2: `key` es la clave de partición.
+# Cada uno tiene su cola de mensajes fallidos `<topic>.dlq` (dlq: false la omite) y 3 particiones con retención de 7 días
+# por defecto. Un servicio solo recibe permisos sobre los topics que declara en `eventos` (produce / consume).
+topics:
+  - { name: solventa.suscripcion.comandos, key: suscripcion_id }        # MS Suscripción -> MS Pagos: cobro_prima_solicitado
+  - { name: solventa.pagos.resultados, key: suscripcion_id }            # MS Pagos -> MS Suscripción: cobro_prima_confirmado / rechazado
+  - { name: solventa.suscripcion.revision, key: suscripcion_id }        # MS Suscripción -> consola web: derivada_a_revision / decision_tomada
+  - { name: solventa.polizas.ciclovida, key: poliza_id }                # MS Suscripción -> Siniestros, analítica: poliza_emitida / cancelada
+  - { name: solventa.siniestros.eventos, key: poliza_id }               # fuente externa -> MS Siniestros: evento_parametrico_recibido
+  - { name: solventa.siniestros.comandos, key: evento_id }              # MS Siniestros -> MS Pagos: indemnizacion_solicitada
+  - { name: solventa.pagos.indemnizaciones, key: evento_id }            # MS Pagos -> MS Siniestros: indemnizacion_pagada / fallida
+  - { name: solventa.identidad.kyc, key: cliente_id }                   # MS Identidad: verificacion_completada / rechazada
+  - { name: solventa.identidad.consentimiento, key: cliente_id }        # MS Identidad -> Cotización, Perfilamiento: consentimiento_otorgado / revocado
+  - { name: solventa.notificaciones, key: cliente_id }                  # varios -> servicio de notificaciones: notificacion_push / email
+  - { name: solventa.humo, key: id, partitions: 1, dlq: false }         # solo para la prueba de humo de HS2 (scripts/prueba-humo-kafka.sh)
+
 services:
   - name: solventa-backend            # = repo ECR, Deployment, Service, rol de BD (solventa_backend)
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline

@@ -1,0 +1,13 @@
+# rule: RULE msk-access
+# tests: modules/msk
+--- a/modules/msk/main.tf
++++ b/modules/msk/main.tf
+@@ -138,7 +138,7 @@
+         Sid      = "Publicar"
+         Effect   = "Allow"
+         Action   = ["kafka-cluster:DescribeTopic", "kafka-cluster:WriteData"]
+-        Resource = [for t in each.value.produce : "${local.topic_arn_prefix}/${t}"]
++        Resource = ["${local.topic_arn_prefix}/*"]
+       }],
+       [for _ in range(length(each.value.consume) > 0 ? 1 : 0) : {
+         Sid      = "Consumir"

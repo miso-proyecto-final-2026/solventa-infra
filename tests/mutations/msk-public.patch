@@ -1,0 +1,13 @@
+# rule: RULE msk-private
+# tests: modules/msk
+--- a/modules/msk/main.tf
++++ b/modules/msk/main.tf
+@@ -78,7 +78,7 @@
+ 
+     connectivity_info {
+       public_access {
+-        type = "DISABLED"
++        type = "SERVICE_PROVIDED_EIP"
+       }
+     }
+   }

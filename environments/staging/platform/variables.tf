@@ -151,3 +151,21 @@ variable "edge_throttling_burst_limit" {
   type        = number
   default     = 400
 }
+
+variable "enable_events" {
+  description = "Crear el bus de eventos (MSK, HS2). Factura por hora y tarda ~25 min en crearse: apagarlo si la sesión no usa eventos."
+  type        = bool
+  default     = true
+}
+
+variable "events_broker_type" {
+  description = "Tipo de broker de MSK. kafka.t3.small es el más barato."
+  type        = string
+  default     = "kafka.t3.small"
+}
+
+variable "events_kafka_version" {
+  description = "Versión de Kafka. Si el tipo de broker no admite KRaft, usar la variante con ZooKeeper (por ejemplo 3.8.x)."
+  type        = string
+  default     = "3.9.x.kraft"
+}

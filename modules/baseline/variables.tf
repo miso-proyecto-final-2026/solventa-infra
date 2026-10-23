@@ -102,3 +102,17 @@ variable "system_namespace" {
   type        = string
   default     = "solventa-system"
 }
+
+variable "events" {
+  description = "Bus de eventos (HS2). null si la plataforma no lo tiene (kind, o enable_events = false): no se crean los topics."
+  type = object({
+    bootstrap_servers = string
+    region            = string
+    topics = map(object({
+      partitions      = number
+      retention_hours = number
+      dlq             = bool
+    }))
+  })
+  default = null
+}

@@ -7,6 +7,14 @@ variable "config" {
   type = object({
     reserved_schemas = optional(list(string), [])
     drop_schemas     = optional(list(string), [])
+    # Topics del bus de eventos (HS2). `key` documenta la clave de partición; `dlq` crea `<topic>.dlq`.
+    topics = optional(list(object({
+      name            = string
+      key             = string
+      partitions      = optional(number, 3)
+      retention_hours = optional(number, 168)
+      dlq             = optional(bool, true)
+    })), [])
     services = list(object({
       name        = string
       image_tag   = string
@@ -26,6 +34,11 @@ variable "config" {
       migration_command = optional(list(string))
       run_as_non_root   = optional(bool, false)
       deploy_repository = optional(string)
+      # Qué topics produce y consume el servicio (HS2). Solo recibe permisos sobre estos.
+      eventos = optional(object({
+        produce = optional(list(string), [])
+        consume = optional(list(string), [])
+      }), {})
       # Exposición pública (API Gateway → NLB → NodePort). Sin `edge` el servicio solo es interno.
       edge = optional(object({
         node_port     = number
@@ -193,4 +206,38 @@ variable "config" {
     )
     error_message = "edge.node_port and edge.path_prefixes must be unique across services."
   }
+  # V10: topics con nombre válido (sin comodines), únicos, con particiones y retención positivas
+  validation {
+    condition = (
+      alltrue([for t in var.config.topics : can(regex("^[a-zA-Z0-9._-]{1,200}$", t.name)) && t.partitions >= 1 && t.retention_hours >= 1])
+      && length(distinct([for t in var.config.topics : t.name])) == length(var.config.topics)
+    )
+    error_message = "Topic names must match [a-zA-Z0-9._-] (no wildcards), be unique, and have partitions >= 1 and retention_hours >= 1."
+  }
+
+  # V11: un servicio solo produce o consume topics declarados
+  validation {
+    condition = alltrue([
+      for s in var.config.services : alltrue([
+        for t in concat(s.eventos.produce, s.eventos.consume) : contains([for x in var.config.topics : x.name], t)
+      ])
+    ])
+    error_message = format(
+      "Service \"%s\" uses a topic that is not declared in topics.",
+      join("\", \"", [
+        for s in var.config.services : s.name
+        if !alltrue([for t in concat(s.eventos.produce, s.eventos.consume) : contains([for x in var.config.topics : x.name], t)])
+      ])
+    )
+  }
+
+  # V12: KAFKA_BOOTSTRAP_SERVERS lo inyecta la plataforma; un servicio con eventos no lo define a mano
+  validation {
+    condition = alltrue([
+      for s in var.config.services :
+      length(concat(s.eventos.produce, s.eventos.consume)) == 0 || !contains(keys(s.settings), "KAFKA_BOOTSTRAP_SERVERS")
+    ])
+    error_message = "KAFKA_BOOTSTRAP_SERVERS is injected by the platform; do not define it in settings."
+  }
+
 }

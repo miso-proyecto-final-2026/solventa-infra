@@ -131,6 +131,44 @@ module "redis" {
   tags = local.tags
 }
 
+locals {
+  # Qué topics produce y consume cada servicio de services.yaml, más la identidad de la prueba de humo (HS2).
+  eventos_servicios = {
+    for name, a in module.service_list.events_access : name => {
+      namespace       = "staging"
+      service_account = name
+      produce         = a.produce
+      consume         = a.consume
+    }
+  }
+  eventos_humo = {
+    "kafka-humo" = {
+      namespace       = "solventa-system"
+      service_account = "kafka-humo"
+      produce         = ["solventa.humo"]
+      consume         = ["solventa.humo"]
+    }
+  }
+}
+
+# Bus de eventos (HS2, ADR-0002): MSK privado, SASL/IAM, permisos mínimos por servicio. Factura por hora.
+module "msk" {
+  count  = var.enable_events ? 1 : 0
+  source = "../../../modules/msk"
+
+  cluster_name              = local.cluster_name
+  vpc_id                    = module.network.vpc_id
+  subnet_ids                = module.network.private_subnet_ids
+  allowed_security_group_id = module.eks.node_security_group_id
+
+  broker_node_type = var.events_broker_type
+  broker_count     = var.az_count
+  kafka_version    = var.events_kafka_version
+  access           = merge(local.eventos_servicios, local.eventos_humo)
+
+  tags = local.tags
+}
+
 module "service_secrets" {
   source = "../../../modules/service-secrets"
 

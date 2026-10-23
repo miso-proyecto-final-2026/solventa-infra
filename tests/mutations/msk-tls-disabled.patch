@@ -1,0 +1,13 @@
+# rule: RULE msk-tls
+# tests: modules/msk
+--- a/modules/msk/main.tf
++++ b/modules/msk/main.tf
+@@ -85,7 +85,7 @@
+ 
+   encryption_info {
+     encryption_in_transit {
+-      client_broker = "TLS"
++      client_broker = "PLAINTEXT"
+       in_cluster    = true
+     }
+   }

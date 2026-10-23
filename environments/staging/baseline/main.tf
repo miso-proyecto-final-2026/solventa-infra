@@ -30,11 +30,23 @@ locals {
     }
   }
 
+  # Bus de eventos (HS2): null si la plataforma no lo creó (enable_events = false o plataforma anterior).
+  kafka_brokers = try(local.platform.kafka_bootstrap_brokers, null)
+
+  # Los servicios con `eventos` reciben los brokers sin tener que declararlos a mano.
+  events_settings = local.kafka_brokers == null ? {} : {
+    for name, _ in module.service_list.events_access : name => { KAFKA_BOOTSTRAP_SERVERS = local.kafka_brokers }
+  }
+
   # image_tags permite fijar el SHA en ejecución sin editar services.yaml.
   services = {
     for name, s in module.service_list.services : name => merge(s, {
       image_tag = lookup(var.image_tags, name, s.image_tag)
-      settings  = merge(s.settings, lookup(local.platform_settings, name, {}))
+      settings = merge(
+        s.settings,
+        lookup(local.platform_settings, name, {}),
+        lookup(local.events_settings, name, {}),
+      )
     })
   }
 }
@@ -65,6 +77,18 @@ module "baseline" {
     scheme     = "rediss"
     host       = local.platform.cache_primary_endpoint
     secret_ref = local.platform.cache_secret_name
+  }
+
+  events = local.kafka_brokers == null ? null : {
+    bootstrap_servers = local.kafka_brokers
+    region            = local.platform.region
+    topics = {
+      for name, t in module.service_list.topics : name => {
+        partitions      = t.partitions
+        retention_hours = t.retention_hours
+        dlq             = t.dlq
+      }
+    }
   }
 
   service_db_secret_names    = local.platform.service_db_secret_names

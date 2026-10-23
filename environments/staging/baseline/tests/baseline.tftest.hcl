@@ -146,3 +146,64 @@ run "image_check_can_be_disabled" {
     error_message = "check_images_exist = false must skip the ECR lookup."
   }
 }
+
+# HS2: con el bus de eventos en la plataforma, el baseline crea los topics y entrega los brokers a quien los usa.
+run "events_create_topics_and_inject_the_brokers" {
+  command = plan
+
+  override_data {
+    target = data.terraform_remote_state.platform
+    values = {
+      outputs = {
+        region                  = "us-east-1"
+        cluster_name            = "solventa-staging"
+        cluster_endpoint        = "https://ABCDEF.gr7.us-east-1.eks.amazonaws.com"
+        cluster_ca_data         = "ZmFrZS1jYQ=="
+        registry_url            = "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+        db_endpoint             = "solventa-staging-postgres.abc.us-east-1.rds.amazonaws.com"
+        db_port                 = 5432
+        db_name                 = "solventa"
+        db_admin_secret_arn     = "arn:aws:secretsmanager:us-east-1:123456789012:secret:rds!db-abc"
+        cache_primary_endpoint  = "solventa-staging-cache.abc.cache.amazonaws.com"
+        cache_secret_name       = "solventa/staging/cache"
+        kyc_evidencias_bucket   = "solventa-staging-kyc-evidencias-123456789012"
+        kafka_bootstrap_brokers = "b-1.eventos.abc.kafka.us-east-1.amazonaws.com:9098,b-2.eventos.abc.kafka.us-east-1.amazonaws.com:9098"
+        service_db_secret_names = {
+          "solventa-backend"       = "solventa/staging/solventa-backend/db"
+          "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
+          "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
+        }
+        service_db_secret_versions = {
+          "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
+          "solventa-identidad"     = "66666666-7777-8888-9999-000000000000"
+          "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        }
+      }
+    }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-backend"]
+    values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-identidad"]
+    values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-perfilamiento"]
+    values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
+  }
+
+  assert {
+    condition     = module.baseline.kafka_topics_job != null
+    error_message = "HS2: with kafka_bootstrap_brokers in the platform, the topics Job exists."
+  }
+
+  assert {
+    condition     = contains(keys(module.service_list.topics), "solventa.suscripcion.comandos")
+    error_message = "HS2: the topics come from services.yaml."
+  }
+}
