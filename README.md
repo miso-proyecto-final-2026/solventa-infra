@@ -22,13 +22,14 @@ ECR y Secrets Manager, más todo lo necesario para validarla **sin cuenta de AWS
 9. [Verificación de migraciones](#verificación-de-migraciones)
 10. [Acceso privado al backend y pruebas de humo](#acceso-privado-al-backend-y-pruebas-de-humo)
 11. [Borde público](#borde-público)
-12. [Añadir un microservicio](#añadir-un-microservicio)
-13. [CI/CD](#cicd)
-14. [Drill HA04](#drill-ha04)
-15. [Teardown](#teardown)
-16. [Errores frecuentes](#errores-frecuentes)
-17. [Eliminar todo de la cuenta (limpieza total)](#eliminar-todo-de-la-cuenta-limpieza-total)
-18. [Notas operativas](#notas-operativas)
+12. [Bus de eventos (MSK)](#bus-de-eventos-msk)
+13. [Añadir un microservicio](#añadir-un-microservicio)
+14. [CI/CD](#cicd)
+15. [Drill HA04](#drill-ha04)
+16. [Teardown](#teardown)
+17. [Errores frecuentes](#errores-frecuentes)
+18. [Eliminar todo de la cuenta (limpieza total)](#eliminar-todo-de-la-cuenta-limpieza-total)
+19. [Notas operativas](#notas-operativas)
 
 ## Arquitectura
 
@@ -323,6 +324,30 @@ Limitaciones conocidas:
 - **CloudFront tarda en crearse y destruirse** (varios minutos cada vez). El WAF de alcance CLOUDFRONT solo existe en `us-east-1`.
 - Un destroy a medias deja el borde facturando: `scripts/verificar-teardown.sh` lo comprueba (NLB, API Gateway, VPC Link, distribución y WAF).
 
+## Bus de eventos (MSK)
+
+Kafka (Amazon MSK) es el bus de las comunicaciones asíncronas del ADR-0002: saga de suscripción, pagos, notificaciones y pago
+paramétrico (HS2). Lo crea `platform`; `baseline` crea los topics.
+
+- **Qué es:** un clúster privado de 2 brokers `kafka.t3.small` (uno por zona), TLS en tránsito y en reposo, sin acceso público.
+  Solo los nodos de EKS llegan a él, por el puerto 9098 (SASL/IAM). Los topics no se crean solos
+  (`auto.create.topics.enable=false`), y la replicación es 2 con `min.insync.replicas=1`, para seguir con un broker caído.
+- **Costo y tiempo:** factura **por broker-hora**, aparte del resto de staging, y tarda ~25 min en crearse. Si la sesión no usa
+  eventos, ponga `enable_events = false` en `staging.tfvars`: no crea el clúster ni el Job de topics.
+- **Topics:** se declaran en `topics:` de `environments/staging/services.yaml` (contrato de la documentación técnica §4.2:
+  nombre, clave de partición, particiones, retención y cola de mensajes fallidos `<topic>.dlq`). Un Job de `baseline`
+  (`modules/kafka-topics`) los crea desde dentro de la VPC y es idempotente.
+- **Permisos mínimos:** cada servicio declara qué `eventos: { produce: [...], consume: [...] }` usa y recibe un rol de Pod
+  Identity solo con esos topics. Quien consume puede además escribir en `<topic>.dlq` de lo que consume. Los grupos de consumo
+  deben empezar por el nombre del servicio (`solventa-suscripcion.<algo>`). Un servicio no puede leer los topics de otro.
+- **Conexión:** los servicios con `eventos` reciben `KAFKA_BOOTSTRAP_SERVERS` por su ConfigMap (no es un secreto: solo funciona
+  con una identidad autorizada). No se define a mano. La autenticación es SASL/OAUTHBEARER firmada con IAM; el cliente de
+  referencia está en `docs/plantillas/eventos/` del backend.
+- **Prueba de humo** (con staging encendido y `baseline` aplicado): `scripts/prueba-humo-kafka.sh` lanza un Job con la
+  identidad `kafka-humo` que publica un evento en `solventa.humo` y lo consume de vuelta. Sale con 0 si llegó.
+- **Teardown:** `scripts/verificar-teardown.sh` revisa también el clúster MSK y su grupo de logs. Los logs de los brokers van a
+  CloudWatch (`/aws/msk/<nombre>`, 14 días) y sirven de evidencia de auditoría.
+
 ## Añadir un microservicio
 
 1. Añade una entrada a `environments/staging/services.yaml` (formato en `specs/001-aws-eks-staging-infra/contracts/service-entry.md`).
@@ -348,6 +373,7 @@ Notas:
   `solventa-identidad` con `s3:PutObject` bajo `kyc/`. El baseline entrega el nombre y la región al servicio
   (`KYC_EVIDENCIAS_BUCKET`, `AWS_DEFAULT_REGION`). La lectura para revisión manual no está habilitada: requeriría otro rol.
   En staging el bucket se crea con `force_destroy` porque solo guarda evidencias sintéticas y se destruye tras cada sesión.
+- **Eventos (HS2):** si el servicio publica o consume, declara `eventos: { produce: [...], consume: [...] }` con topics ya declarados en `topics:`; `platform` crea su rol de Pod Identity y `baseline` le entrega `KAFKA_BOOTSTRAP_SERVERS`. Ver [Bus de eventos (MSK)](#bus-de-eventos-msk).
 - Un servicio nuevo necesita su imagen en ECR antes del baseline (paso 4); el baseline falla antes de tocar cargas si no está.
 - El plan del baseline muestra solo `+`, **salvo** los objetos de `db-access` (Job y ConfigMap de SQL reemplazados, ExternalSecret de contraseñas actualizado) porque cambia su hash.
   Es esperado: es un Job de una sola ejecución (junto con su ConfigMap de SQL y el ExternalSecret de contraseñas, que se actualizan) y reemplazarlo no causa interrupciones.

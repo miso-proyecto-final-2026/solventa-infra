@@ -53,6 +53,12 @@ variable "ebs_volume_size_gb" {
   default     = 10
 }
 
+variable "log_retention_days" {
+  description = "Días que se conservan los logs de los brokers en CloudWatch."
+  type        = number
+  default     = 14
+}
+
 variable "access" {
   description = <<-EOT
     Permisos mínimos por servicio sobre el bus. La clave es el nombre del servicio (también el prefijo de sus grupos de

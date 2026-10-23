@@ -24,6 +24,9 @@ skip-check:
   - CKV_AWS_118   # enhanced monitoring: costo adicional, fuera de alcance
   - CKV_AWS_353   # performance insights: no disponible en db.t4g.micro
   - CKV_AWS_161   # autenticación IAM de RDS: requiere cambios en el backend (research R10)
+  # MSK (HS2): staging bajo demanda; los logs de brokers existen para auditoría, no para conservarse años
+  - CKV_AWS_338   # retención de logs de 1 año: 14 días bastan en un staging que se destruye (costo)
+  - CKV_AWS_158   # log group con CMK propia: se usa el cifrado en reposo administrado por AWS
   # Terraform y cadena de suministro
   - CKV_TF_1      # módulos comunitarios fijados por versión (~> 6.0 / ~> 21.0), no por hash
   - CKV_AWS_394   # zonas de disponibilidad: se limita con az_count

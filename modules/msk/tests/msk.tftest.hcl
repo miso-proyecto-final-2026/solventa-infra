@@ -60,6 +60,20 @@ run "cluster_is_private_encrypted_and_iam_only" {
   }
 }
 
+run "broker_logs_are_kept_for_audit" {
+  command = plan
+
+  assert {
+    condition     = aws_msk_cluster.this.logging_info[0].broker_logs[0].cloudwatch_logs[0].enabled == true
+    error_message = "RULE msk-logs: broker logs go to CloudWatch (audit evidence for HA05, CKV_AWS_80)."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_group.this.retention_in_days == 14
+    error_message = "Broker logs are kept 14 days by default (cost)."
+  }
+}
+
 run "cluster_spans_two_zones_with_small_brokers" {
   command = plan
 

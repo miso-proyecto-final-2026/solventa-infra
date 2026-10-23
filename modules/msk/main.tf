@@ -60,6 +60,14 @@ resource "aws_msk_configuration" "this" {
   EOT
 }
 
+# Logs de los brokers (CKV_AWS_80): evidencia de auditoría de las conexiones y de los errores de autorización.
+resource "aws_cloudwatch_log_group" "this" {
+  name              = "/aws/msk/${var.name}"
+  retention_in_days = var.log_retention_days
+
+  tags = var.tags
+}
+
 resource "aws_msk_cluster" "this" {
   cluster_name           = var.name
   kafka_version          = var.kafka_version
@@ -101,6 +109,15 @@ resource "aws_msk_cluster" "this" {
   configuration_info {
     arn      = aws_msk_configuration.this.arn
     revision = aws_msk_configuration.this.latest_revision
+  }
+
+  logging_info {
+    broker_logs {
+      cloudwatch_logs {
+        enabled   = true
+        log_group = aws_cloudwatch_log_group.this.name
+      }
+    }
   }
 
   tags = var.tags

@@ -32,6 +32,19 @@ module "db_access" {
   depends_on = [module.addons]
 }
 
+# Topics del bus de eventos (HS2): un Job desde dentro de la VPC, antes que las cargas que los usan.
+module "kafka_topics" {
+  source = "../kafka-topics"
+  count  = var.events == null ? 0 : 1
+
+  bootstrap_servers = var.events.bootstrap_servers
+  region            = var.events.region
+  topics            = var.events.topics
+  namespace         = module.addons.system_namespace
+
+  depends_on = [module.addons]
+}
+
 module "workload" {
   source   = "../service-workload"
   for_each = var.services
@@ -46,6 +59,6 @@ module "workload" {
   db_sslmode        = var.db.sslmode
   cache             = var.cache
 
-  # El Job db-access crea el rol y los esquemas antes de que corra la migración.
-  depends_on = [module.db_access]
+  # El Job db-access crea el rol y los esquemas antes de que corra la migración; los topics existen antes de arrancar.
+  depends_on = [module.db_access, module.kafka_topics]
 }
