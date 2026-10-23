@@ -7,6 +7,7 @@ Sale con 0 si el evento publicado llega al consumidor dentro del tiempo límite;
 import asyncio
 import json
 import os
+import ssl
 import sys
 import time
 import uuid
@@ -35,6 +36,7 @@ def _seguridad() -> dict:
 
     return {
         "security_protocol": "SASL_SSL",
+        "ssl_context": ssl.create_default_context(),
         "sasl_mechanism": "OAUTHBEARER",
         "sasl_oauth_token_provider": ProveedorTokenIam(),
     }

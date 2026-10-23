@@ -91,3 +91,27 @@ run "bootstrap_servers_are_required" {
 
   expect_failures = [var.bootstrap_servers]
 }
+
+# Defectos que solo aparecieron contra MSK de verdad (el Kafka local es PLAINTEXT).
+run "tls_clients_receive_an_ssl_context" {
+  command = plan
+
+  assert {
+    condition     = strcontains(kubernetes_config_map_v1.topics.data["crear_topics.py"], "ssl_context=ssl.create_default_context()")
+    error_message = "RULE kafka-topics-tls: aiokafka exige un ssl_context con SASL_SSL; sin él el cliente ni se construye."
+  }
+}
+
+run "failed_pods_are_kept_so_their_logs_can_be_read" {
+  command = plan
+
+  assert {
+    condition     = kubernetes_job_v1.topics.spec[0].template[0].spec[0].restart_policy == "Never"
+    error_message = "RULE kafka-topics-logs: con OnFailure el controlador borra el pod al agotar los reintentos y se pierden los logs."
+  }
+
+  assert {
+    condition     = kubernetes_job_v1.topics.spec[0].ttl_seconds_after_finished == null
+    error_message = "The Job and its pods are not auto-deleted: Terraform owns its lifecycle."
+  }
+}
