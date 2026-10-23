@@ -151,6 +151,14 @@ resource "aws_iam_role_policy" "client" {
         Resource = [aws_msk_cluster.this.arn]
       }],
       # Las sentencias opcionales se construyen con `for ... if` para que todas tengan la misma forma.
+      # El cliente publica con `enable_idempotence`: pide un ID de productor, que MSK autoriza sobre el clúster y no sobre un topic.
+      # Sin este permiso el productor falla al arrancar con ClusterAuthorizationFailedError. También lo usa quien escribe en la cola de fallidos.
+      [for _ in range(length(each.value.produce) + length(each.value.consume) > 0 ? 1 : 0) : {
+        Sid      = "ProductorIdempotente"
+        Effect   = "Allow"
+        Action   = ["kafka-cluster:WriteDataIdempotently"]
+        Resource = [aws_msk_cluster.this.arn]
+      }],
       [for _ in range(length(each.value.produce) > 0 ? 1 : 0) : {
         Sid      = "Publicar"
         Effect   = "Allow"

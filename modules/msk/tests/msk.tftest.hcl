@@ -153,6 +153,17 @@ run "each_service_gets_a_role_with_only_its_topics" {
     error_message = "RULE msk-access: a consumer can send to the dead-letter topic of what it consumes."
   }
 
+  # El productor idempotente pide un ID de productor, que MSK autoriza sobre el clúster; sin esto el servicio no arranca.
+  assert {
+    condition = alltrue([
+      for n in ["svc-a", "svc-b"] : contains(flatten([
+        for s in jsondecode(aws_iam_role_policy.client[n].policy).Statement :
+        s.Resource if contains(s.Action, "kafka-cluster:WriteDataIdempotently")
+      ]), "arn:aws:kafka:us-east-1:123456789012:cluster/solventa-staging-events/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-1")
+    ])
+    error_message = "RULE msk-idempotent: every service that publishes needs WriteDataIdempotently on the cluster (and only on it)."
+  }
+
   assert {
     condition = alltrue([
       for s in jsondecode(aws_iam_role_policy.client["svc-a"].policy).Statement :
