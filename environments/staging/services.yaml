@@ -1,6 +1,6 @@
 # Lista única de microservicios (contrato C1). La leen bootstrap, platform y baseline.
 # Esquemas reservados para microservicios futuros (sin dueño, sin permisos).
-reserved_schemas: [suscripcion, pagos, siniestros, socios]
+reserved_schemas: [suscripcion, pagos, socios]
 
 # Solo se eliminan si están aquí Y no tienen dueño. Vacío por defecto.
 drop_schemas: []
@@ -107,3 +107,35 @@ services:
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
     # Sin `edge`: es un servicio interno. Devuelve datos financieros del cliente y solo lo consumen otros servicios;
     # no se publica por CloudFront ni por el API Gateway. Para probarlo, port-forward al Service (ver README).
+
+  - name: solventa-siniestros         # MS Siniestros (HU27): recibe eventos paramétricos y los publica en Kafka; esquema propio `siniestros`
+    image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    # Meta de HA03 (10 -> 5.000 eventos/min en <= 60 s): umbral de CPU más bajo para escalar antes que el resto.
+    replicas: { min: 2, max: 10 }
+    autoscaling: { cpu_target_percent: 50 }
+    owned_schemas: [siniestros]
+    database_env_vars: [DATABASE_URL]  # el servicio acepta DATABASE_URL como alternativa a SINIESTROS_DATABASE_URL
+    cache_env_var: ""                  # Siniestros no usa Redis
+    secret_env_vars:
+      # Llave del proveedor de eventos (X-Service-Key). Nace aleatoria en Secrets Manager; sin nombre, el servicio la
+      # asocia a la fuente `proveedor-simulado`. Vacía = nadie accede. Provisional hasta los roles internos (F26).
+      SINIESTROS_API_KEYS: solventa/staging/siniestros-api-key
+    migration_command: [alembic, upgrade, head]
+    run_as_non_root: false
+    deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
+    # Publica los eventos que recibe y los consume en el grupo `solventa-siniestros.recepcion` (debe empezar por el nombre
+    # del servicio). La plataforma le inyecta KAFKA_BOOTSTRAP_SERVERS y AWS_DEFAULT_REGION.
+    eventos:
+      produce: [solventa.siniestros.eventos]
+      consume: [solventa.siniestros.eventos]
+    # Borde público: el proveedor de eventos es externo. `high_volume` lo exime del límite global por IP y del throttling
+    # general (ráfagas legítimas, EC-E2.1) y le aplica uno propio y más alto; el resto de rutas conserva los límites bajos.
+    edge:
+      node_port: 30082
+      path_prefixes: [/v1/siniestros]
+      high_volume: true

@@ -85,3 +85,48 @@ run "vpc_link_only_reaches_node_ports_inside_the_vpc" {
     error_message = "RULE vpc-link-egress: the VPC Link may only talk to the VPC CIDR."
   }
 }
+
+run "only_high_volume_services_get_their_own_throttling" {
+  command = plan
+
+  variables {
+    services = {
+      "solventa-backend" = {
+        listener_arn  = "arn:aws:elasticloadbalancing:us-east-1:111111111111:listener/net/n/1/a"
+        node_port     = 30080
+        path_prefixes = ["/v1/cotizaciones"]
+      }
+      "solventa-siniestros" = {
+        listener_arn  = "arn:aws:elasticloadbalancing:us-east-1:111111111111:listener/net/n/1/c"
+        node_port     = 30082
+        path_prefixes = ["/v1/siniestros"]
+        high_volume   = true
+      }
+    }
+  }
+
+  # El conjunto de route_settings del stage no se conoce hasta el apply: se verifica la lista que lo alimenta.
+  assert {
+    condition     = local.high_volume_routes == toset(["ANY /v1/siniestros", "ANY /v1/siniestros/{proxy+}"])
+    error_message = "RULE high-volume: only the routes of services with high_volume get their own throttling (exact and {proxy+})."
+  }
+
+  assert {
+    condition     = var.high_volume_throttling_rate_limit == 2000 && var.high_volume_throttling_burst_limit == 4000
+    error_message = "RULE high-volume: the default high-volume throttling is 2000 rps / 4000 burst."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_stage.default.default_route_settings[0].throttling_rate_limit == 200
+    error_message = "RULE throttling: the rest of the routes keep the general limit."
+  }
+}
+
+run "without_high_volume_services_there_are_no_route_overrides" {
+  command = plan
+
+  assert {
+    condition     = length(local.high_volume_routes) == 0
+    error_message = "RULE high-volume: no service marked high_volume means no per-route override."
+  }
+}

@@ -216,8 +216,12 @@ module "api_gateway" {
       listener_arn  = module.nlb[0].listener_arns[name]
       node_port     = s.edge.node_port
       path_prefixes = s.edge.path_prefixes
+      high_volume   = s.edge.high_volume
     }
   }
+
+  high_volume_throttling_rate_limit  = var.edge_high_volume_throttling_rate_limit
+  high_volume_throttling_burst_limit = var.edge_high_volume_throttling_burst_limit
 
   throttling_rate_limit  = var.edge_throttling_rate_limit
   throttling_burst_limit = var.edge_throttling_burst_limit
@@ -234,6 +238,12 @@ module "cloudfront" {
   allowed_countries = var.edge_allowed_countries
 
   rate_limit_per_5min = var.edge_rate_limit_per_5min
+
+  # Rutas de los servicios `high_volume` (proveedores de eventos): quedan fuera del límite global por IP y tienen el suyo.
+  high_volume_path_regex = join("|", [
+    for name, s in local.edge_services : "^(${join("|", s.edge.path_prefixes)})(/.*)?$" if s.edge.high_volume
+  ])
+  high_volume_rate_limit_per_5min = var.edge_high_volume_rate_limit_per_5min
 
   tags = local.tags
 }

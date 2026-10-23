@@ -376,6 +376,39 @@ run "v9_edge_valid_and_optional" {
     condition     = output.services["svc-a"].edge.node_port == 30080 && output.services["svc-b"].edge == null
     error_message = "RULE v9: edge must pass through for exposed services and stay null for internal ones."
   }
+
+  assert {
+    condition     = output.services["svc-a"].edge.high_volume == false
+    error_message = "RULE v9: high_volume is off unless the service asks for it."
+  }
+}
+
+run "v9_edge_high_volume_passes_through" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "svc-a"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 30082, path_prefixes = ["/v1/a"], high_volume = true }
+        },
+      ]
+    }
+  }
+
+  assert {
+    condition     = output.services["svc-a"].edge.high_volume == true
+    error_message = "RULE v9: edge.high_volume must reach the platform so the WAF and the gateway can apply their own limits."
+  }
 }
 
 run "v9_duplicate_node_port" {
