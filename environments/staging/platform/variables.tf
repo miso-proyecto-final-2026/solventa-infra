@@ -183,7 +183,7 @@ variable "events_broker_type" {
 }
 
 variable "events_kafka_version" {
-  description = "Versión de Kafka. Si el tipo de broker no admite KRaft, usar la variante con ZooKeeper (por ejemplo 3.8.x)."
+  description = "Versión de Kafka. kafka.t3.small solo admite clústeres con ZooKeeper (3.9.x); las variantes .kraft exigen brokers kafka.m5/m7g."
   type        = string
-  default     = "3.9.x.kraft"
+  default     = "3.9.x"
 }

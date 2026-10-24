@@ -153,6 +153,17 @@ run "each_service_gets_a_role_with_only_its_topics" {
     error_message = "RULE msk-access: a consumer can send to the dead-letter topic of what it consumes."
   }
 
+  # El productor idempotente pide un ID de productor, que MSK autoriza sobre el clúster; sin esto el servicio no arranca.
+  assert {
+    condition = alltrue([
+      for n in ["svc-a", "svc-b"] : contains(flatten([
+        for s in jsondecode(aws_iam_role_policy.client[n].policy).Statement :
+        s.Resource if contains(s.Action, "kafka-cluster:WriteDataIdempotently")
+      ]), "arn:aws:kafka:us-east-1:123456789012:cluster/solventa-staging-events/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-1")
+    ])
+    error_message = "RULE msk-idempotent: every service that publishes needs WriteDataIdempotently on the cluster (and only on it)."
+  }
+
   assert {
     condition = alltrue([
       for s in jsondecode(aws_iam_role_policy.client["svc-a"].policy).Statement :
@@ -266,4 +277,38 @@ run "tags_are_mandatory" {
   }
 
   expect_failures = [var.tags]
+}
+
+run "small_brokers_cannot_use_kraft" {
+  command = plan
+
+  variables {
+    broker_node_type = "kafka.t3.small"
+    kafka_version    = "3.9.x.kraft"
+  }
+
+  expect_failures = [var.kafka_version]
+}
+
+run "kraft_is_fine_with_bigger_brokers" {
+  command = plan
+
+  variables {
+    broker_node_type = "kafka.m7g.large"
+    kafka_version    = "3.9.x.kraft"
+  }
+
+  assert {
+    condition     = aws_msk_cluster.this.kafka_version == "3.9.x.kraft"
+    error_message = "KRaft is allowed on m5/m7g brokers."
+  }
+}
+
+run "default_version_works_with_the_default_broker" {
+  command = plan
+
+  assert {
+    condition     = !endswith(aws_msk_cluster.this.kafka_version, ".kraft") && aws_msk_cluster.this.broker_node_group_info[0].instance_type == "kafka.t3.small"
+    error_message = "The defaults (kafka.t3.small and a ZooKeeper-based version) must be a combination MSK accepts."
+  }
 }

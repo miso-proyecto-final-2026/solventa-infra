@@ -25,9 +25,17 @@ variable "allowed_security_group_id" {
 }
 
 variable "kafka_version" {
-  description = "Versión de Kafka. Con .kraft no hay ZooKeeper; si el tipo de broker no la admite, usar la variante con ZooKeeper (por ejemplo 3.8.x)."
+  description = <<-EOT
+    Versión de Kafka. Los brokers kafka.t3.* solo admiten clústeres con ZooKeeper (por ejemplo 3.9.x); las variantes .kraft
+    exigen brokers kafka.m5.* o kafka.m7g.* (MSK rechaza la combinación en CreateCluster).
+  EOT
   type        = string
-  default     = "3.9.x.kraft"
+  default     = "3.9.x"
+
+  validation {
+    condition     = !(startswith(var.broker_node_type, "kafka.t3.") && endswith(var.kafka_version, ".kraft"))
+    error_message = "Los brokers kafka.t3.* no admiten KRaft: usa una versión con ZooKeeper (por ejemplo 3.9.x) o brokers kafka.m5/m7g."
+  }
 }
 
 variable "broker_node_type" {

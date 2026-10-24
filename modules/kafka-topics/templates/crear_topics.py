@@ -8,6 +8,7 @@ Entorno: KAFKA_BOOTSTRAP_SERVERS (obligatorio), AWS_REGION (para IAM) y KAFKA_SE
 import asyncio
 import json
 import os
+import ssl
 import sys
 
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
@@ -37,6 +38,7 @@ def _cliente() -> AIOKafkaAdminClient:
 
     return AIOKafkaAdminClient(
         security_protocol="SASL_SSL",
+        ssl_context=ssl.create_default_context(),
         sasl_mechanism="OAUTHBEARER",
         sasl_oauth_token_provider=ProveedorTokenIam(),
         **comunes,

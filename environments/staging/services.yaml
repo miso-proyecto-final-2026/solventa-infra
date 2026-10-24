@@ -1,6 +1,6 @@
 # Lista única de microservicios (contrato C1). La leen bootstrap, platform y baseline.
 # Esquemas reservados para microservicios futuros (sin dueño, sin permisos).
-reserved_schemas: [suscripcion, pagos, socios]
+reserved_schemas: [pagos, socios]
 
 # Solo se eliminan si están aquí Y no tienen dueño. Vacío por defecto.
 drop_schemas: []
@@ -108,6 +108,41 @@ services:
     # Sin `edge`: es un servicio interno. Devuelve datos financieros del cliente y solo lo consumen otros servicios;
     # no se publica por CloudFront ni por el API Gateway. Para probarlo, port-forward al Service (ver README).
 
+  - name: solventa-suscripcion        # MS Suscripción (HU15): saga de suscripción y decisión automática; esquema propio `suscripcion`
+    image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    replicas: { min: 2, max: 6 }
+    autoscaling: { cpu_target_percent: 70 }
+    owned_schemas: [suscripcion]
+    database_env_vars: [DATABASE_URL]  # el servicio acepta DATABASE_URL como alternativa a SUSCRIPCION_DATABASE_URL
+    cache_env_var: ""                  # Suscripción no usa Redis
+    settings:
+      # REST síncrono hacia los vecinos (ADR-0002): los Service son ClusterIP en el puerto 80.
+      IDENTIDAD_URL: http://solventa-identidad
+      COTIZACION_URL: http://solventa-backend
+      PERFILAMIENTO_URL: http://solventa-perfilamiento
+      # La firma de MSK (SASL/IAM) necesita la región; Pod Identity no la entrega.
+      AWS_REGION: us-east-1
+    secret_env_vars:
+      # Misma clave que Identidad acepta en SERVICE_API_KEYS: con ella Suscripción pregunta a quién pertenece el token.
+      IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
+      # La que Perfilamiento acepta en PERFILAMIENTO_API_KEYS (X-Service-Key).
+      PERFILAMIENTO_SERVICE_KEY: solventa/staging/perfilamiento-api-key
+    # Publica la decisión (cobro y revisión asistida) a través de su cola de salida.
+    eventos:
+      produce: [solventa.suscripcion.comandos, solventa.suscripcion.revision]
+    migration_command: [alembic, upgrade, head]
+    run_as_non_root: false
+    deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
+    # Borde público: CloudFront + WAF → API Gateway → NLB → este NodePort. El cliente (app móvil) lo llama con su token.
+    edge:
+      node_port: 30082
+      path_prefixes: [/v1/suscripciones]
+
   - name: solventa-siniestros         # MS Siniestros (HU27): recibe eventos paramétricos y los publica en Kafka; esquema propio `siniestros`
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
     port: 8000
@@ -136,6 +171,7 @@ services:
     # Borde público: el proveedor de eventos es externo. `high_volume` lo exime del límite global por IP y del throttling
     # general (ráfagas legítimas, EC-E2.1) y le aplica uno propio y más alto; el resto de rutas conserva los límites bajos.
     edge:
-      node_port: 30082
+      node_port: 30083
       path_prefixes: [/v1/siniestros]
       high_volume: true
+

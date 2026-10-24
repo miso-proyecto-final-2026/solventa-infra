@@ -282,6 +282,8 @@ curl -s -XPOST localhost:8000/v1/cotizaciones -H 'Content-Type: application/json
 - **Persistencia:** desde un pod efímero en `solventa-system` con `psql`, comprueba la fila en `cotizacion.cotizaciones`.
 - **Caché:** repetir la petición con el mismo `cliente_id` devuelve `metadata.hit_cache: true`.
 
+**MS Suscripción (HU15)** sí se publica por el borde (`/v1/suscripciones`, NodePort 30082): la app móvil lo llama con el token del cliente. Depende de tres vecinos por REST interno (Identidad, Cotización y Perfilamiento, con sus claves de servicio en Secrets Manager) y **publica en el bus**, así que necesita `enable_events = true`: sin brokers no arranca fuera de modo desarrollo. Al agregarlo, `bootstrap` crea su rol de despliegue y su repositorio de imágenes: actualice la variable `AWS_DEPLOY_ROLE_ARNS` del repo del backend con la salida `service_deploy_role_arns` antes del primer `cicd/deploy-staging`.
+
 **MS Perfilamiento (HU23)** tampoco se publica por el borde: devuelve datos financieros del cliente y solo lo consumen otros servicios, así que su entrada en `services.yaml` no declara `edge`. Se prueba por túnel con su clave de servicio (el valor lo crea `platform` en `solventa/staging/perfilamiento-api-key`):
 
 ```sh
@@ -293,7 +295,7 @@ curl -s -H "X-Service-Key: $KEY" localhost:8002/v1/perfilamiento/smoke-1/linaje 
 
 En Postman basta apuntar `perfilamiento_url` a `http://localhost:8002` mientras dure el túnel.
 
-**MS Siniestros (HU27)** sí se publica por el borde (`/v1/siniestros`, NodePort 30082, `high_volume`): el proveedor de eventos es externo. Recibe `KAFKA_BOOTSTRAP_SERVERS` y `AWS_DEFAULT_REGION` de `baseline` (el cliente de eventos firma el token SASL/IAM con la región), tiene permisos solo sobre `solventa.siniestros.eventos` y el grupo `solventa-siniestros.recepcion`, y su llave sale de `solventa/staging/siniestros-api-key` (valor aleatorio sin nombre: el servicio la asocia a la fuente `proveedor-simulado`). Prueba por el borde, con staging encendido y el servicio desplegado:
+**MS Siniestros (HU27)** sí se publica por el borde (`/v1/siniestros`, NodePort 30083, `high_volume`): el proveedor de eventos es externo. Recibe `KAFKA_BOOTSTRAP_SERVERS` y `AWS_DEFAULT_REGION` de `baseline` (el cliente de eventos firma el token SASL/IAM con la región), tiene permisos solo sobre `solventa.siniestros.eventos` y el grupo `solventa-siniestros.recepcion`, y su llave sale de `solventa/staging/siniestros-api-key` (valor aleatorio sin nombre: el servicio la asocia a la fuente `proveedor-simulado`). Prueba por el borde, con staging encendido y el servicio desplegado:
 
 ```sh
 KEY=$(aws secretsmanager get-secret-value --secret-id solventa/staging/siniestros-api-key --query SecretString --output text | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')

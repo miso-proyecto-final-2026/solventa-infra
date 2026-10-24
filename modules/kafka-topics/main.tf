@@ -69,7 +69,8 @@ resource "kubernetes_job_v1" "topics" {
       }
 
       spec {
-        restart_policy       = "OnFailure"
+        # Never: cada reintento es un pod nuevo y los fallidos se conservan (con OnFailure el controlador los borra y se pierden los logs).
+        restart_policy       = "Never"
         service_account_name = kubernetes_service_account_v1.this.metadata[0].name
 
         container {
