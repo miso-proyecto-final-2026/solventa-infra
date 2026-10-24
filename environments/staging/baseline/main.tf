@@ -34,8 +34,12 @@ locals {
   kafka_brokers = try(local.platform.kafka_bootstrap_brokers, null)
 
   # Los servicios con `eventos` reciben los brokers sin tener que declararlos a mano.
+  # La región la necesita el cliente de eventos para firmar el token SASL/IAM (AWS_DEFAULT_REGION).
   events_settings = local.kafka_brokers == null ? {} : {
-    for name, _ in module.service_list.events_access : name => { KAFKA_BOOTSTRAP_SERVERS = local.kafka_brokers }
+    for name, _ in module.service_list.events_access : name => tomap({
+      KAFKA_BOOTSTRAP_SERVERS = local.kafka_brokers
+      AWS_DEFAULT_REGION      = local.platform.region
+    })
   }
 
   # image_tags permite fijar el SHA en ejecución sin editar services.yaml.

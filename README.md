@@ -295,6 +295,16 @@ curl -s -H "X-Service-Key: $KEY" localhost:8002/v1/perfilamiento/smoke-1/linaje 
 
 En Postman basta apuntar `perfilamiento_url` a `http://localhost:8002` mientras dure el túnel.
 
+**MS Siniestros (HU27)** sí se publica por el borde (`/v1/siniestros`, NodePort 30083, `high_volume`): el proveedor de eventos es externo. Recibe `KAFKA_BOOTSTRAP_SERVERS` y `AWS_DEFAULT_REGION` de `baseline` (el cliente de eventos firma el token SASL/IAM con la región), tiene permisos solo sobre `solventa.siniestros.eventos` y el grupo `solventa-siniestros.recepcion`, y su llave sale de `solventa/staging/siniestros-api-key` (valor aleatorio sin nombre: el servicio la asocia a la fuente `proveedor-simulado`). Prueba por el borde, con staging encendido y el servicio desplegado:
+
+```sh
+KEY=$(aws secretsmanager get-secret-value --secret-id solventa/staging/siniestros-api-key --query SecretString --output text | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
+URL=$(terraform -chdir=environments/staging/platform output -raw public_url)
+curl -s -XPOST "$URL/v1/siniestros/eventos" -H "X-Service-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"evento_id":"humo-1","tipo":"sismo","fuente":"proveedor-simulado","ocurrido_en":"2026-10-23T14:05:00Z","datos":{"magnitud":6.4}}'   # 202
+curl -s -H "X-Service-Key: $KEY" "$URL/v1/siniestros/eventos/resumen"                                                                     # recibidos, publicados, procesados
+```
+
 ## Borde público
 
 Implementa la ruta de entrada del documento de arquitectura: **cliente → CloudFront (TLS) + WAF → API Gateway → NLB interno → NodePort de cada servicio**. Se crea en la etapa `platform` (variable `enable_edge`, activa por defecto) y lo crea todo Terraform: el clúster no crea balanceadores, así que el destroy no deja ninguno huérfano.
@@ -302,7 +312,7 @@ Implementa la ruta de entrada del documento de arquitectura: **cliente → Cloud
 | Módulo | Qué crea |
 |---|---|
 | `modules/cloudfront` | Distribución de CloudFront (HTTPS, sin caché de la API, sin Host) y el WAF vinculado |
-| `modules/api-gateway` | HTTP API, VPC Link, una integración por servicio y rutas por prefijo (`/v1/cotizaciones`, `/v1/clientes`) con throttling |
+| `modules/api-gateway` | HTTP API, VPC Link, una integración por servicio y rutas por prefijo (`/v1/cotizaciones`, `/v1/clientes`, `/v1/siniestros`) con throttling |
 | `modules/nlb` | NLB interno multi-AZ (capa 4), un listener y un grupo de destinos por servicio, y los nodos registrados desde su grupo de autoescalado |
 | `modules/service-workload` | Un Service `NodePort` fijo (`<servicio>-edge`) por servicio expuesto |
 
@@ -313,6 +323,13 @@ edge:
   node_port: 30080                  # 30000-32767, único; el listener del NLB usa el mismo puerto
   path_prefixes: [/v1/cotizaciones] # absolutos, sin barra final, únicos entre servicios
 ```
+
+**Servicios de alto volumen (`high_volume`).** Un proveedor externo de eventos (HU27, `solventa-siniestros`) envía ráfagas legítimas: la meta EC-E2.1 son ≈ 1.670 eventos/s, y con los límites generales (1000 solicitudes por IP en 5 min en el WAF, 200 rps / 400 de ráfaga en el API Gateway) un solo proveedor recibiría 429 a los pocos minutos. Con `edge.high_volume: true` sus rutas:
+
+- quedan **fuera** de la regla global del WAF y tienen la suya (`rate-limit-high-volume`, `edge_high_volume_rate_limit_per_5min`, 600.000 por IP en 5 min ≈ 2.000/s);
+- tienen throttling propio en el API Gateway (`edge_high_volume_throttling_rate_limit` 2.000 rps y `..._burst_limit` 4.000), por ruta.
+
+El resto de rutas conserva los límites bajos. El límite alto no es infinito: sigue habiendo tope por IP, SQLi/XSS y geo blocking. **Si el proveedor real está fuera de CO y US, el WAF lo bloquea** (`edge_allowed_countries`).
 
 Reglas del WAF (sección 5.3 de la documentación técnica): SQL injection (conjunto administrado de AWS), XSS, rate limiting global de 1000 solicitudes por IP en 5 minutos (429), geo blocking fuera de CO y US (`edge_allowed_countries`) y cuerpo máximo de 256 KB (413).
 
@@ -404,6 +421,7 @@ Variables y environments de GitHub (contrato C4):
 | `solventa-infra` | `AWS_APPLY_ROLE_ARN` | salida `infra_apply_role_arn` |
 | `solventa-infra` | `TF_STATE_BUCKET` | salida `state_bucket` |
 | `solventa-backend` | `AWS_ROLE_ARN` | `service_deploy_role_arns["solventa-backend"]` |
+| `solventa-backend` | `AWS_DEPLOY_ROLE_ARNS` | salida `service_deploy_role_arns` del bootstrap, completa (incluye `solventa-siniestros`; el despliegue por comentario `cicd/deploy-staging` falla si falta el rol del servicio) |
 | `solventa-backend` | `AWS_ROLE_ARN_PERFILAMIENTO` | `service_deploy_role_arns["solventa-perfilamiento"]` (HU23; habilita el job `deploy-staging-perfilamiento`) |
 
 - Ambos repositorios necesitan un environment llamado `staging` (la confianza OIDC de apply y deploy depende de él).

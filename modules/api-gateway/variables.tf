@@ -23,6 +23,7 @@ variable "services" {
     listener_arn  = string
     node_port     = number
     path_prefixes = list(string)
+    high_volume   = optional(bool, false)
   }))
 }
 
@@ -36,6 +37,18 @@ variable "throttling_burst_limit" {
   description = "Ráfaga máxima de solicitudes simultáneas."
   type        = number
   default     = 400
+}
+
+variable "high_volume_throttling_rate_limit" {
+  description = "Solicitudes por segundo sostenidas por ruta de los servicios `high_volume` (proveedores de eventos)."
+  type        = number
+  default     = 2000
+}
+
+variable "high_volume_throttling_burst_limit" {
+  description = "Ráfaga máxima por ruta de los servicios `high_volume`."
+  type        = number
+  default     = 4000
 }
 
 variable "tags" {

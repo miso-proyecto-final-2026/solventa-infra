@@ -62,6 +62,30 @@ resource "aws_wafv2_web_acl" "this" {
         limit                 = var.rate_limit_per_5min
         evaluation_window_sec = 300
         aggregate_key_type    = "IP"
+
+        # Las rutas de alto volumen tienen su propia regla (más abajo): aquí no cuentan.
+        dynamic "scope_down_statement" {
+          for_each = var.high_volume_path_regex == "" ? [] : [1]
+
+          content {
+            not_statement {
+              statement {
+                regex_match_statement {
+                  regex_string = var.high_volume_path_regex
+
+                  field_to_match {
+                    uri_path {}
+                  }
+
+                  text_transformation {
+                    priority = 0
+                    type     = "NONE"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
 
@@ -265,6 +289,53 @@ resource "aws_wafv2_web_acl" "this" {
       cloudwatch_metrics_enabled = true
       metric_name                = "xss"
       sampled_requests_enabled   = true
+    }
+  }
+
+  # 6. Límite por IP propio de las rutas de alto volumen (proveedores de eventos): más alto que el global, pero no infinito.
+  dynamic "rule" {
+    for_each = var.high_volume_path_regex == "" ? [] : [1]
+
+    content {
+      name     = "rate-limit-high-volume"
+      priority = 6
+
+      action {
+        block {
+          custom_response {
+            response_code = 429
+          }
+        }
+      }
+
+      statement {
+        rate_based_statement {
+          limit                 = var.high_volume_rate_limit_per_5min
+          evaluation_window_sec = 300
+          aggregate_key_type    = "IP"
+
+          scope_down_statement {
+            regex_match_statement {
+              regex_string = var.high_volume_path_regex
+
+              field_to_match {
+                uri_path {}
+              }
+
+              text_transformation {
+                priority = 0
+                type     = "NONE"
+              }
+            }
+          }
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = "rate-limit-high-volume"
+        sampled_requests_enabled   = true
+      }
     }
   }
 

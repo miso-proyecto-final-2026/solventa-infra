@@ -40,9 +40,11 @@ variable "config" {
         consume = optional(list(string), [])
       }), {})
       # Exposición pública (API Gateway → NLB → NodePort). Sin `edge` el servicio solo es interno.
+      # `high_volume`: tráfico legítimo en ráfagas (proveedor de eventos). Tiene límites propios en el WAF y en el API Gateway.
       edge = optional(object({
         node_port     = number
         path_prefixes = list(string)
+        high_volume   = optional(bool, false)
       }))
     }))
   })

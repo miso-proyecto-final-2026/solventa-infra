@@ -15,6 +15,15 @@ locals {
   ]...)
 }
 
+locals {
+  # Rutas de los servicios `high_volume`: tienen su propio throttling, por encima del general del stage.
+  high_volume_routes = toset(flatten([
+    for name, s in var.services : [
+      for p in s.path_prefixes : ["ANY ${p}", "ANY ${p}/{proxy+}"]
+    ] if s.high_volume
+  ]))
+}
+
 resource "aws_security_group" "vpc_link" {
   name        = "${var.name}-apigw-vpclink"
   description = "VPC Link del API Gateway hacia el NLB interno"
@@ -83,6 +92,18 @@ resource "aws_apigatewayv2_stage" "default" {
     throttling_rate_limit  = var.throttling_rate_limit
     throttling_burst_limit = var.throttling_burst_limit
   }
+
+  dynamic "route_settings" {
+    for_each = local.high_volume_routes
+
+    content {
+      route_key              = route_settings.value
+      throttling_rate_limit  = var.high_volume_throttling_rate_limit
+      throttling_burst_limit = var.high_volume_throttling_burst_limit
+    }
+  }
+
+  depends_on = [aws_apigatewayv2_route.this]
 
   tags = var.tags
 }
