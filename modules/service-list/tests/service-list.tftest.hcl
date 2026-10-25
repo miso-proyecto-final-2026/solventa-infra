@@ -1,4 +1,4 @@
-# T008: un caso válido y un caso inválido por cada regla V1–V7 (contrato C1).
+# T008: un caso válido y un caso inválido por cada regla V1–V14 (contrato C1).
 
 variables {
   config = {

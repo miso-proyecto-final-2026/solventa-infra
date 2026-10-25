@@ -407,7 +407,7 @@ y `kubectl -n staging describe hpa solventa-backend` (dos métricas).
 ## Añadir un microservicio
 
 1. Añade una entrada a `environments/staging/services.yaml` (formato en `specs/001-aws-eks-staging-infra/contracts/service-entry.md`).
-   Las validaciones V1–V7 fallan en el plan con mensajes claros.
+   Las validaciones V1–V14 fallan en el plan con mensajes claros.
 2. `terraform -chdir=bootstrap apply` — crea el rol de despliegue del servicio (solo `+`).
 3. `terraform -chdir=environments/staging/platform apply -var-file=staging.tfvars` — repositorio ECR, secreto de BD y access entry (solo `+`).
 4. Publica la imagen del nuevo servicio.

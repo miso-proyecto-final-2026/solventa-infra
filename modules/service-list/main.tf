@@ -1,4 +1,4 @@
-# Módulo auxiliar sin recursos: valida services.yaml (V1–V7, contrato C1) y lo normaliza
+# Módulo auxiliar sin recursos: valida services.yaml (V1–V14, contrato C1) y lo normaliza
 # para bootstrap, platform, baseline y local/kind (FR-022).
 
 locals {
