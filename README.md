@@ -266,7 +266,12 @@ kubectl -n solventa-system get jobs                     # db-access Complete
 kubectl -n staging get jobs                             # solventa-backend-migrate-<hash> Complete
 kubectl -n staging logs job/<job-de-migración>
 kubectl -n staging get pods -o wide                     # ≥ 2 réplicas en nodos de ambas AZ
+kubectl -n staging get pods -l app.kubernetes.io/name=<servicio>   --field-selector=status.phase=Succeeded                # vacío
 ```
+
+Los pods de migración llevan `app.kubernetes.io/name = <servicio>-migrate` (y `component = migration`) para quedar
+fuera del selector del Deployment, que también usan el HPA y el PDB: un pod `Succeeded` dentro de él contaría con
+métrica 0 y, sin request de CPU, dejaría la métrica de CPU del HPA en `<unknown>` (HA03, `RULE migration-labels`).
 
 ## Acceso privado al backend y pruebas de humo
 

@@ -98,6 +98,23 @@ run "deployment_follows_the_workload_contract" {
     error_message = "The migration template CronJob must be suspended."
   }
 
+  # Un pod de migración dentro del selector lo cuentan el HPA (métrica 0, sin request de CPU) y el PDB (HA03).
+  assert {
+    condition = !alltrue([
+      for k, v in kubernetes_deployment_v1.this.spec[0].selector[0].match_labels :
+      lookup(kubernetes_job_v1.migrate[0].spec[0].template[0].metadata[0].labels, k, null) == v
+    ])
+    error_message = "RULE migration-labels: the migration Job pods must not match the Deployment selector (HPA, PDB)."
+  }
+
+  assert {
+    condition = !alltrue([
+      for k, v in kubernetes_deployment_v1.this.spec[0].selector[0].match_labels :
+      lookup(kubernetes_cron_job_v1.migrate[0].spec[0].job_template[0].spec[0].template[0].metadata[0].labels, k, null) == v
+    ])
+    error_message = "RULE migration-labels: the CI migration pods (from the CronJob) must not match the Deployment selector."
+  }
+
   assert {
     condition     = kubernetes_service_account_v1.this.automount_service_account_token == false
     error_message = "The ServiceAccount must not automount its token."
