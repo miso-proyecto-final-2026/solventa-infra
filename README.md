@@ -396,9 +396,11 @@ pod (/metrics, gauge http_requests_in_flight) --scrape 15 s--> Prometheus --avg_
   sesión de HA03.
 - **`/metrics` no se publica.** El API Gateway solo enruta los prefijos de `edge` (no hay ruta `$default` ni
   `/{proxy+}`), y la regla V13 impide que `metrics_path` o `health_path` queden bajo un prefijo público. Prometheus lo
-  recoge directo de la IP del pod. Alcance real: el NodePort del borde y el Service `ClusterIP` llevan al puerto de la
-  app, así que desde **dentro de la VPC** (NLB interno, otros pods) `/metrics` sigue siendo alcanzable; no hay
-  NetworkPolicy aplicada (el VPC CNI no tiene activado el agente de políticas).
+  recoge directo de la IP del pod. **Dentro de la VPC sí es legible, y se acepta:** comparte puerto con la app, así
+  que llega por el NodePort del NLB interno y por el Service `ClusterIP` (no hay NetworkPolicy: el VPC CNI no tiene
+  activado el agente de políticas). Es un único gauge, sin etiquetas ni datos de clientes. Mejora futura: servirlo en
+  un puerto aparte que ningún Service ni NodePort exponga y, con NetworkPolicy, abrirlo solo a `monitoring`
+  (ADR-0014 de `solventa-backend`).
 - Si Prometheus o el adaptador caen, el HPA marca la métrica como no disponible y sigue escalando por CPU.
 
 Comprobar la cadena: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/staging/pods/*/http_requests_in_flight"`
