@@ -17,3 +17,8 @@ output "ready" {
   description = "Valor que depende de que ESO y su store estén instalados (para depends_on)."
   value       = kubectl_manifest.cluster_secret_store.id
 }
+
+output "monitoring_namespace" {
+  description = "Namespace de Prometheus y Prometheus Adapter."
+  value       = var.monitoring_namespace
+}

@@ -39,7 +39,7 @@ Tres raíces de Terraform con ciclos de vida distintos:
 |---|---|---|
 | `bootstrap/` | Bucket S3 de estado (bloqueo nativo), proveedor OIDC de GitHub y roles de CI | Una vez; **sobrevive al teardown**, no cuesta |
 | `environments/staging/platform/` | VPC (2 AZ), EKS `solventa-staging` (3 × `t3.medium`), ECR, RDS PostgreSQL 16 Multi-AZ, ElastiCache Redis con failover, secretos | Bajo demanda |
-| `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
+| `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Prometheus y Prometheus Adapter (HPA por concurrencia), Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
 
 - La lista de servicios vive **una sola vez** en `environments/staging/services.yaml` (contrato C1).
 - `modules/baseline` es la composición compartida: la usan `environments/staging/baseline` (AWS) y
@@ -366,6 +366,43 @@ paramétrico (HS2). Lo crea `platform`; `baseline` crea los topics.
   identidad `kafka-humo` que publica un evento en `solventa.humo` y lo consume de vuelta. Sale con 0 si llegó.
 - **Teardown:** `scripts/verificar-teardown.sh` revisa también el clúster MSK y su grupo de logs. Los logs de los brokers van a
   CloudWatch (`/aws/msk/<nombre>`, 14 días) y sirven de evidencia de auditoría.
+
+## Autoescalado por solicitudes concurrentes (HA03)
+
+Con caché, la CPU de Cotización no sigue al volumen (hallazgo de HA02) y el HPA por CPU no escala. Por eso
+`solventa-backend` escala por **solicitudes en curso por pod** (ADR-0014 de `solventa-backend`):
+
+```text
+pod (/metrics, gauge http_requests_in_flight) --scrape 15 s--> Prometheus --avg_over_time 30 s--> Prometheus Adapter
+  --custom.metrics.k8s.io--> HPA (Pods: AverageValue; CPU de respaldo)
+```
+
+- `modules/cluster-addons` instala, en el namespace `monitoring`, un **Prometheus mínimo** (solo el trabajo
+  `kubernetes-pods`; sin Alertmanager, exportadores ni volumen persistente; retención de 2 h) y **Prometheus Adapter**
+  con una sola regla. Lo usan igual AWS y `local/kind`.
+- Un servicio se suma declarando en `services.yaml`:
+
+  ```yaml
+  metrics_path: /metrics             # anota el pod con prometheus.io/scrape, port y path
+  autoscaling:
+    cpu_target_percent: 70           # sigue como respaldo: el HPA toma la recomendación más alta
+    concurrent_requests_target: 3    # solicitudes en curso promedio por pod (requiere metrics_path, V14)
+    scale_up: { pods: 4, percent: 100, period_seconds: 15, stabilization_window_seconds: 0 }
+  ```
+
+  `scale_up` es opcional; por defecto se queda la política de siempre (2 pods cada 60 s tras 30 s de estabilización).
+  Hoy solo `solventa-backend` declara la métrica y abre la subida; la bajada es igual para todos (1 pod cada 60 s tras 300 s).
+- El objetivo de 3 es una **estimación** por la ley de Little, no una medición: se calibra en kind y en el humo de la
+  sesión de HA03.
+- **`/metrics` no se publica.** El API Gateway solo enruta los prefijos de `edge` (no hay ruta `$default` ni
+  `/{proxy+}`), y la regla V13 impide que `metrics_path` o `health_path` queden bajo un prefijo público. Prometheus lo
+  recoge directo de la IP del pod. Alcance real: el NodePort del borde y el Service `ClusterIP` llevan al puerto de la
+  app, así que desde **dentro de la VPC** (NLB interno, otros pods) `/metrics` sigue siendo alcanzable; no hay
+  NetworkPolicy aplicada (el VPC CNI no tiene activado el agente de políticas).
+- Si Prometheus o el adaptador caen, el HPA marca la métrica como no disponible y sigue escalando por CPU.
+
+Comprobar la cadena: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/staging/pods/*/http_requests_in_flight"`
+y `kubectl -n staging describe hpa solventa-backend` (dos métricas).
 
 ## Añadir un microservicio
 

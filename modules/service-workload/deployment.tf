@@ -17,6 +17,12 @@ resource "kubernetes_deployment_v1" "this" {
     template {
       metadata {
         labels = local.labels
+        # Prometheus recoge el pod directo por su IP (sin pasar por el Service ni el NodePort del borde).
+        annotations = var.service.metrics_path == null ? {} : {
+          "prometheus.io/scrape" = "true"
+          "prometheus.io/port"   = tostring(var.service.port)
+          "prometheus.io/path"   = var.service.metrics_path
+        }
       }
 
       spec {
@@ -190,6 +196,27 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "this" {
       name        = kubernetes_deployment_v1.this.metadata[0].name
     }
 
+    # HA03 (ADR-0014 del backend): solicitudes en curso por pod, publicadas por Prometheus Adapter. Con varias
+    # métricas el HPA toma la recomendación más alta, así que la CPU queda de respaldo si la concurrencia falta.
+    dynamic "metric" {
+      for_each = var.service.autoscaling.concurrent_requests_target == null ? [] : [1]
+
+      content {
+        type = "Pods"
+
+        pods {
+          metric {
+            name = "http_requests_in_flight"
+          }
+
+          target {
+            type          = "AverageValue"
+            average_value = tostring(var.service.autoscaling.concurrent_requests_target)
+          }
+        }
+      }
+    }
+
     metric {
       type = "Resource"
 
@@ -204,14 +231,25 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "this" {
     }
 
     behavior {
+      # Configurable por servicio (services.yaml); por defecto, 2 pods cada 60 s tras 30 s de estabilización.
       scale_up {
-        stabilization_window_seconds = 30
+        stabilization_window_seconds = var.service.autoscaling.scale_up.stabilization_window_seconds
         select_policy                = "Max"
 
         policy {
           type           = "Pods"
-          value          = 2
-          period_seconds = 60
+          value          = var.service.autoscaling.scale_up.pods
+          period_seconds = var.service.autoscaling.scale_up.period_seconds
+        }
+
+        dynamic "policy" {
+          for_each = var.service.autoscaling.scale_up.percent == null ? [] : [1]
+
+          content {
+            type           = "Percent"
+            value          = var.service.autoscaling.scale_up.percent
+            period_seconds = var.service.autoscaling.scale_up.period_seconds
+          }
         }
       }
 
