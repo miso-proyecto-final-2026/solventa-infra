@@ -305,6 +305,17 @@ curl -s -XPOST "$URL/v1/siniestros/eventos" -H "X-Service-Key: $KEY" -H 'Content
 curl -s -H "X-Service-Key: $KEY" "$URL/v1/siniestros/eventos/resumen"                                                                     # recibidos, publicados, procesados
 ```
 
+**MS Pagos (HU18)** no se publica por el borde: maneja tokens de pago y solo lo llaman otros servicios (SAQ-A), así que su entrada en `services.yaml` no declara `edge`. Esquema propio `pagos` (salió de los reservados). Consume `solventa.suscripcion.comandos` en el grupo `solventa-pagos.cobros` y publica solo en `solventa.pagos.resultados`; MS Suscripción consume ese topic en `solventa-suscripcion.pagos`. La pasarela es el simulador (`PASARELA_PROVEEDOR=simulador`, modo por defecto `APROBAR`; el prefijo del token elige otro modo, ver `services/pagos/README.md` del backend). `PERIODO_GRACIA_DIAS=3` es **provisional**. Necesita `enable_events = true`. Al agregarlo, `bootstrap` crea su rol de despliegue y su repositorio de imágenes: actualice `AWS_DEPLOY_ROLE_ARNS` en el backend antes del primer `cicd/deploy-staging`. Se prueba por túnel con su clave (la crea `platform` en `solventa/staging/pagos-api-key`):
+
+```sh
+KEY=$(aws secretsmanager get-secret-value --secret-id solventa/staging/pagos-api-key --query SecretString --output text | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
+kubectl -n staging port-forward svc/solventa-pagos 8005:80 &
+curl -s -XPOST localhost:8005/v1/pagos/cobros -H "X-Service-Key: $KEY" -H 'Content-Type: application/json'   -d '{"suscripcion_id":"humo-1","cliente_id":"humo","metodo_pago":"tok_sim_humo","monto":"1000.00"}'      # 201 APROBADA
+curl -s -H "X-Service-Key: $KEY" localhost:8005/v1/pagos/transacciones/<id>                             # estado
+```
+
+En Postman: `pagos_url` = `http://localhost:8005` y la clave como valor actual de `pagos_key` mientras dure el túnel.
+
 ## Borde público
 
 Implementa la ruta de entrada del documento de arquitectura: **cliente → CloudFront (TLS) + WAF → API Gateway → NLB interno → NodePort de cada servicio**. Se crea en la etapa `platform` (variable `enable_edge`, activa por defecto) y lo crea todo Terraform: el clúster no crea balanceadores, así que el destroy no deja ninguno huérfano.
@@ -421,7 +432,7 @@ Variables y environments de GitHub (contrato C4):
 | `solventa-infra` | `AWS_APPLY_ROLE_ARN` | salida `infra_apply_role_arn` |
 | `solventa-infra` | `TF_STATE_BUCKET` | salida `state_bucket` |
 | `solventa-backend` | `AWS_ROLE_ARN` | `service_deploy_role_arns["solventa-backend"]` |
-| `solventa-backend` | `AWS_DEPLOY_ROLE_ARNS` | salida `service_deploy_role_arns` del bootstrap, completa (incluye `solventa-siniestros`; el despliegue por comentario `cicd/deploy-staging` falla si falta el rol del servicio) |
+| `solventa-backend` | `AWS_DEPLOY_ROLE_ARNS` | salida `service_deploy_role_arns` del bootstrap, completa (incluye `solventa-siniestros` y `solventa-pagos`; el despliegue por comentario `cicd/deploy-staging` falla si falta el rol del servicio) |
 | `solventa-backend` | `AWS_ROLE_ARN_PERFILAMIENTO` | `service_deploy_role_arns["solventa-perfilamiento"]` (HU23; habilita el job `deploy-staging-perfilamiento`) |
 
 - Ambos repositorios necesitan un environment llamado `staging` (la confianza OIDC de apply y deploy depende de él).
