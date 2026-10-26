@@ -196,7 +196,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "this" {
       name        = kubernetes_deployment_v1.this.metadata[0].name
     }
 
-    # HA03 (ADR-0014 del backend): solicitudes en curso por pod, publicadas por Prometheus Adapter. Con varias
+    # HA03 (ADR-0015 del backend): solicitudes en curso por pod, publicadas por Prometheus Adapter. Con varias
     # métricas el HPA toma la recomendación más alta, así que la CPU queda de respaldo si la concurrencia falta.
     dynamic "metric" {
       for_each = var.service.autoscaling.concurrent_requests_target == null ? [] : [1]

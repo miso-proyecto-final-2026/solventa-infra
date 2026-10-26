@@ -52,7 +52,7 @@ resource "helm_release" "external_secrets" {
   wait = true
 }
 
-# HA03 (ADR-0014 del backend): solicitudes en curso por pod para el HPA. Prometheus mínimo, solo recoge los pods
+# HA03 (ADR-0015 del backend): solicitudes en curso por pod para el HPA. Prometheus mínimo, solo recoge los pods
 # anotados con prometheus.io/scrape (lo pone service-workload cuando el servicio declara metrics_path); sin
 # Alertmanager, exportadores ni volumen persistente: la historia corta basta para el HPA y se pierde al reiniciar.
 resource "helm_release" "prometheus" {

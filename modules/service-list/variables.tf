@@ -25,7 +25,7 @@ variable "config" {
         limits   = object({ cpu = string, memory = string })
       })
       replicas = object({ min = number, max = number })
-      # `concurrent_requests_target`: escala por solicitudes en curso por pod (HA03, ADR-0014 del backend), con la CPU
+      # `concurrent_requests_target`: escala por solicitudes en curso por pod (HA03, ADR-0015 del backend), con la CPU
       # como respaldo; requiere `metrics_path`. `scale_up`: política de subida del HPA; por defecto, 2 pods cada 60 s.
       autoscaling = optional(object({
         cpu_target_percent         = optional(number, 70)

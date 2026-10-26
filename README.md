@@ -375,7 +375,7 @@ paramétrico (HS2). Lo crea `platform`; `baseline` crea los topics.
 ## Autoescalado por solicitudes concurrentes (HA03)
 
 Con caché, la CPU de Cotización no sigue al volumen (hallazgo de HA02) y el HPA por CPU no escala. Por eso
-`solventa-backend` escala por **solicitudes en curso por pod** (ADR-0014 de `solventa-backend`):
+`solventa-backend` escala por **solicitudes en curso por pod** (ADR-0015 de `solventa-backend`):
 
 ```text
 pod (/metrics, gauge http_requests_in_flight) --scrape 15 s--> Prometheus --avg_over_time 30 s--> Prometheus Adapter
@@ -391,21 +391,21 @@ pod (/metrics, gauge http_requests_in_flight) --scrape 15 s--> Prometheus --avg_
   metrics_path: /metrics             # anota el pod con prometheus.io/scrape, port y path
   autoscaling:
     cpu_target_percent: 70           # sigue como respaldo: el HPA toma la recomendación más alta
-    concurrent_requests_target: 3    # solicitudes en curso promedio por pod (requiere metrics_path, V14)
+    concurrent_requests_target: 16   # solicitudes en curso promedio por pod (requiere metrics_path, V14)
     scale_up: { pods: 4, percent: 100, period_seconds: 15, stabilization_window_seconds: 0 }
   ```
 
   `scale_up` es opcional; por defecto se queda la política de siempre (2 pods cada 60 s tras 30 s de estabilización).
   Hoy solo `solventa-backend` declara la métrica y abre la subida; la bajada es igual para todos (1 pod cada 60 s tras 300 s).
-- El objetivo de 3 es una **estimación** por la ley de Little, no una medición: se calibra en kind y en el humo de la
-  sesión de HA03.
+- El objetivo de 16 sale de la ley de Little calibrada con el humo de la sesión de HA03 del 2026-10-25 (ADR-0015 de
+  `solventa-backend`, Supuesto 3); partió de una estimación de 3.
 - **`/metrics` no se publica.** El API Gateway solo enruta los prefijos de `edge` (no hay ruta `$default` ni
   `/{proxy+}`), y la regla V13 impide que `metrics_path` o `health_path` queden bajo un prefijo público. Prometheus lo
   recoge directo de la IP del pod. **Dentro de la VPC sí es legible, y se acepta:** comparte puerto con la app, así
   que llega por el NodePort del NLB interno y por el Service `ClusterIP` (no hay NetworkPolicy: el VPC CNI no tiene
   activado el agente de políticas). Es un único gauge, sin etiquetas ni datos de clientes. Mejora futura: servirlo en
   un puerto aparte que ningún Service ni NodePort exponga y, con NetworkPolicy, abrirlo solo a `monitoring`
-  (ADR-0014 de `solventa-backend`).
+  (ADR-0015 de `solventa-backend`).
 - Si Prometheus o el adaptador caen, el HPA marca la métrica como no disponible y sigue escalando por CPU.
 
 Comprobar la cadena: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/staging/pods/*/http_requests_in_flight"`
