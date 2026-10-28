@@ -21,6 +21,7 @@ override_data {
       cache_primary_endpoint = "solventa-staging-cache.abc.cache.amazonaws.com"
       cache_secret_name      = "solventa/staging/cache"
       kyc_evidencias_bucket  = "solventa-staging-kyc-evidencias-123456789012"
+      polizas_bucket         = "solventa-staging-polizas-123456789012"
       service_db_secret_names = {
         "solventa-backend"       = "solventa/staging/solventa-backend/db"
         "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
@@ -245,6 +246,7 @@ run "events_create_topics_and_inject_the_brokers" {
         cache_primary_endpoint  = "solventa-staging-cache.abc.cache.amazonaws.com"
         cache_secret_name       = "solventa/staging/cache"
         kyc_evidencias_bucket   = "solventa-staging-kyc-evidencias-123456789012"
+        polizas_bucket          = "solventa-staging-polizas-123456789012"
         kafka_bootstrap_brokers = "b-1.eventos.abc.kafka.us-east-1.amazonaws.com:9098,b-2.eventos.abc.kafka.us-east-1.amazonaws.com:9098"
         service_db_secret_names = {
           "solventa-backend"       = "solventa/staging/solventa-backend/db"
@@ -302,8 +304,8 @@ run "events_create_topics_and_inject_the_brokers" {
   }
 
   assert {
-    condition     = toset(module.service_list.events_access["solventa-suscripcion"].produce) == toset(["solventa.suscripcion.comandos", "solventa.suscripcion.revision"])
-    error_message = "HU15: solventa-suscripcion publica solo sus dos topics."
+    condition     = toset(module.service_list.events_access["solventa-suscripcion"].produce) == toset(["solventa.suscripcion.comandos", "solventa.suscripcion.revision", "solventa.polizas.ciclovida"])
+    error_message = "HU15/HU20: solventa-suscripcion publica solo sus tres topics (cobro, revisión y ciclo de vida de la póliza)."
   }
 
   assert {
@@ -332,6 +334,11 @@ run "events_create_topics_and_inject_the_brokers" {
   assert {
     condition     = local.services["solventa-pagos"].settings["AWS_DEFAULT_REGION"] == "us-east-1" && can(regex("9098", local.services["solventa-pagos"].settings["KAFKA_BOOTSTRAP_SERVERS"]))
     error_message = "HU18: solventa-pagos receives the brokers and the region."
+  }
+
+  assert {
+    condition     = local.services["solventa-suscripcion"].settings["POLIZAS_BUCKET"] == "solventa-staging-polizas-123456789012" && local.services["solventa-suscripcion"].settings["AWS_DEFAULT_REGION"] == "us-east-1"
+    error_message = "HU20: solventa-suscripcion receives the policy documents bucket and the region from the platform."
   }
 
   assert {

@@ -28,6 +28,13 @@ locals {
       KYC_EVIDENCIAS_BUCKET = local.platform.kyc_evidencias_bucket
       AWS_DEFAULT_REGION    = local.platform.region
     }
+    # Documentos de póliza (HU20). Sin el bucket (eventos apagados o plataforma anterior) no se define la variable.
+    "solventa-suscripcion" = {
+      for k, v in {
+        POLIZAS_BUCKET     = try(local.platform.polizas_bucket, null)
+        AWS_DEFAULT_REGION = local.platform.region
+      } : k => v if v != null
+    }
   }
 
   # Bus de eventos (HS2): null si la plataforma no lo creó (enable_events = false o plataforma anterior).

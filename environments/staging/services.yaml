@@ -132,10 +132,11 @@ services:
       IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
       # La que Perfilamiento acepta en PERFILAMIENTO_API_KEYS (X-Service-Key).
       PERFILAMIENTO_SERVICE_KEY: solventa/staging/perfilamiento-api-key
-    # Publica la decisión (cobro y revisión asistida) a través de su cola de salida y consume el resultado del cobro
-    # (HU18) en el grupo `solventa-suscripcion.pagos`.
+    # Publica la decisión (cobro y revisión asistida) y, tras la firma, `poliza_emitida` (HU20) a través de su cola de salida,
+    # y consume el resultado del cobro (HU18) en el grupo `solventa-suscripcion.pagos`. El PDF de la póliza va al bucket
+    # `polizas_documentos` (POLIZAS_BUCKET lo entrega baseline; el permiso de escritura va en el rol de MSK de este servicio).
     eventos:
-      produce: [solventa.suscripcion.comandos, solventa.suscripcion.revision]
+      produce: [solventa.suscripcion.comandos, solventa.suscripcion.revision, solventa.polizas.ciclovida]
       consume: [solventa.pagos.resultados]
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
@@ -143,7 +144,7 @@ services:
     # Borde público: CloudFront + WAF → API Gateway → NLB → este NodePort. El cliente (app móvil) lo llama con su token.
     edge:
       node_port: 30082
-      path_prefixes: [/v1/suscripciones]
+      path_prefixes: [/v1/suscripciones, /v1/polizas]
 
   - name: solventa-siniestros         # MS Siniestros (HU27): recibe eventos paramétricos y los publica en Kafka; esquema propio `siniestros`
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline

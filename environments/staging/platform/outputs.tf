@@ -80,6 +80,11 @@ output "kyc_evidencias_bucket" {
   value       = module.kyc_evidencias.bucket_name
 }
 
+output "polizas_bucket" {
+  description = "Bucket de documentos de póliza (HU20; solo referencia); null si enable_events es false."
+  value       = var.enable_events ? module.polizas_documentos[0].bucket_name : null
+}
+
 output "public_url" {
   description = "URL pública del borde (CloudFront); null si el borde está desactivado."
   value       = local.edge_enabled ? module.cloudfront[0].url : null

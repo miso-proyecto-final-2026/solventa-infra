@@ -144,6 +144,11 @@ run "platform_composition_follows_the_contract" {
   }
 
   assert {
+    condition     = output.polizas_bucket == "solventa-staging-polizas-123456789012"
+    error_message = "HU20: the policy documents bucket must be named solventa-<env>-polizas-<account>."
+  }
+
+  assert {
     condition     = output.registry_url == "123456789012.dkr.ecr.us-east-1.amazonaws.com"
     error_message = "registry_url must be the account ECR registry."
   }
@@ -240,6 +245,40 @@ run "event_bus_is_part_of_the_platform_and_can_be_switched_off" {
   }
 }
 
+# HU20: el bucket de pólizas comparte el rol de MSK de Suscripción (una sola asociación de Pod Identity por cuenta de servicio).
+run "policies_bucket_attaches_to_the_suscripcion_msk_role" {
+  command = plan
+
+  variables {
+    cluster_admin_principal_arns = ["arn:aws:iam::123456789012:user/operador"]
+  }
+
+  assert {
+    condition     = length(module.polizas_documentos) == 1 && module.polizas_documentos[0].bucket_name == "solventa-staging-polizas-123456789012"
+    error_message = "HU20: the policy documents bucket is created with the event bus."
+  }
+
+  assert {
+    condition     = module.polizas_documentos[0].writer_role_arn == null
+    error_message = "HU20: no second role or Pod Identity association for solventa-suscripcion."
+  }
+
+  assert {
+    condition     = module.msk[0].client_role_names["solventa-suscripcion"] == "solventa-staging-solventa-suscripcion-eventos"
+    error_message = "HU20: the bucket policy is attached to the MSK role of solventa-suscripcion."
+  }
+
+  assert {
+    condition     = contains(module.service_list.events_access["solventa-suscripcion"].produce, "solventa.polizas.ciclovida")
+    error_message = "HU20: solventa-suscripcion must be allowed to publish poliza_emitida."
+  }
+
+  assert {
+    condition     = contains(module.service_list.services["solventa-suscripcion"].edge.path_prefixes, "/v1/polizas")
+    error_message = "HU20: the wallet endpoint /v1/polizas goes through the edge."
+  }
+}
+
 run "event_bus_off_creates_nothing" {
   command = plan
 
@@ -251,5 +290,10 @@ run "event_bus_off_creates_nothing" {
   assert {
     condition     = length(module.msk) == 0 && output.kafka_bootstrap_brokers == null
     error_message = "HS2: with enable_events = false there is no cluster and no broker output."
+  }
+
+  assert {
+    condition     = length(module.polizas_documentos) == 0 && output.polizas_bucket == null
+    error_message = "HU20: without the event bus there is no MSK role to attach to, so no policy documents bucket."
   }
 }

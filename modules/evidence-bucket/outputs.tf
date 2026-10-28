@@ -9,6 +9,6 @@ output "bucket_arn" {
 }
 
 output "writer_role_arn" {
-  description = "Rol que asume el servicio para escribir evidencias."
-  value       = aws_iam_role.writer.arn
+  description = "Rol que asume el servicio para escribir evidencias; null si se usa un rol existente (existing_role_name)."
+  value       = one(aws_iam_role.writer[*].arn)
 }

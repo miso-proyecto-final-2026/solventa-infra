@@ -86,12 +86,12 @@ run "service_can_only_put_objects_under_the_evidence_prefix" {
   }
 
   assert {
-    condition     = aws_eks_pod_identity_association.writer.service_account == "solventa-identidad" && aws_eks_pod_identity_association.writer.namespace == "staging"
+    condition     = one(aws_eks_pod_identity_association.writer).service_account == "solventa-identidad" && one(aws_eks_pod_identity_association.writer).namespace == "staging"
     error_message = "Only the identidad service account in the staging namespace may assume the role."
   }
 
   assert {
-    condition     = jsondecode(aws_iam_role.writer.assume_role_policy).Statement[0].Principal.Service == "pods.eks.amazonaws.com"
+    condition     = jsondecode(one(aws_iam_role.writer).assume_role_policy).Statement[0].Principal.Service == "pods.eks.amazonaws.com"
     error_message = "The role must be assumable only through EKS Pod Identity."
   }
 }
@@ -104,4 +104,72 @@ run "tags_are_mandatory" {
   }
 
   expect_failures = [var.tags]
+}
+
+# HU20: documentos de póliza en un segundo bucket, sin expirar los objetos y con permiso en un rol que ya existe.
+run "policy_documents_do_not_expire_and_keep_old_versions_longer" {
+  command = plan
+
+  variables {
+    bucket_name     = "solventa-staging-polizas-123456789012"
+    prefix          = "polizas/"
+    retention_days  = null
+    noncurrent_days = 30
+  }
+
+  assert {
+    condition     = length(one(aws_s3_bucket_lifecycle_configuration.this.rule).expiration) == 0
+    error_message = "With retention_days = null the current objects must not expire."
+  }
+
+  assert {
+    condition     = one(aws_s3_bucket_lifecycle_configuration.this.rule).noncurrent_version_expiration[0].noncurrent_days == 30
+    error_message = "Old versions must be kept for noncurrent_days."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_versioning.this.versioning_configuration[0].status == "Enabled"
+    error_message = "Versioning must stay enabled without expiration."
+  }
+}
+
+run "existing_role_gets_the_policy_without_a_new_role_or_association" {
+  command = plan
+
+  variables {
+    bucket_name        = "solventa-staging-polizas-123456789012"
+    prefix             = "polizas/"
+    existing_role_name = "solventa-staging-solventa-suscripcion-eventos"
+    policy_name        = "write-polizas"
+  }
+
+  assert {
+    condition     = length(aws_iam_role.writer) == 0 && length(aws_eks_pod_identity_association.writer) == 0
+    error_message = "With existing_role_name no role or Pod Identity association may be created (EKS allows one association per service account)."
+  }
+
+  assert {
+    condition     = aws_iam_role_policy.writer.role == "solventa-staging-solventa-suscripcion-eventos" && aws_iam_role_policy.writer.name == "write-polizas"
+    error_message = "The write policy must be attached to the existing role."
+  }
+
+  assert {
+    condition     = one(jsondecode(aws_iam_role_policy.writer.policy).Statement).Action == ["s3:PutObject"] && endswith(one(jsondecode(aws_iam_role_policy.writer.policy).Statement).Resource, "/polizas/*")
+    error_message = "RULE least-privilege: the existing role may only PutObject under polizas/."
+  }
+
+  assert {
+    condition     = output.writer_role_arn == null
+    error_message = "writer_role_arn must be null when no role is created."
+  }
+}
+
+run "retention_days_must_be_null_or_positive" {
+  command = plan
+
+  variables {
+    retention_days = 0
+  }
+
+  expect_failures = [var.retention_days]
 }

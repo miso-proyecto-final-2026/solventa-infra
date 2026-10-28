@@ -23,6 +23,11 @@ output "client_role_arns" {
   value       = { for k, r in aws_iam_role.client : k => r.arn }
 }
 
+output "client_role_names" {
+  description = "Nombre del rol de Pod Identity de cada servicio con acceso al bus, por nombre. Otros módulos le adjuntan permisos (p. ej. el bucket de pólizas de HU20)."
+  value       = { for k, r in aws_iam_role.client : k => r.name }
+}
+
 output "admin_role_arn" {
   description = "Rol del Job que crea los topics (puede crearlos y ajustarlos, pero no leer ni escribir eventos)."
   value       = aws_iam_role.admin.arn

@@ -221,6 +221,12 @@ run "roles_are_bound_to_the_service_account_by_pod_identity" {
     condition     = jsondecode(aws_iam_role.client["svc-a"].assume_role_policy).Statement[0].Principal.Service == "pods.eks.amazonaws.com"
     error_message = "Only EKS Pod Identity may assume the service roles."
   }
+
+  # HU20: otros módulos (el bucket de pólizas) adjuntan permisos al rol del servicio por su nombre.
+  assert {
+    condition     = output.client_role_names["svc-a"] == "solventa-staging-svc-a-eventos" && aws_iam_role.client["svc-a"].name == output.client_role_names["svc-a"]
+    error_message = "client_role_names must expose the name of each service role (<cluster>-<service>-eventos)."
+  }
 }
 
 run "topic_admin_can_create_but_not_read_or_write_data" {
