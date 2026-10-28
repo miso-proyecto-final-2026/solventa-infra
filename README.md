@@ -305,7 +305,7 @@ curl -s -XPOST "$URL/v1/siniestros/eventos" -H "X-Service-Key: $KEY" -H 'Content
 curl -s -H "X-Service-Key: $KEY" "$URL/v1/siniestros/eventos/resumen"                                                                     # recibidos, publicados, procesados
 ```
 
-**MS Pagos (HU18)** no se publica por el borde: maneja tokens de pago y solo lo llaman otros servicios (SAQ-A), así que su entrada en `services.yaml` no declara `edge`. Esquema propio `pagos` (salió de los reservados). Consume `solventa.suscripcion.comandos` en el grupo `solventa-pagos.cobros` y publica solo en `solventa.pagos.resultados`; MS Suscripción consume ese topic en `solventa-suscripcion.pagos`. La pasarela es el simulador (`PASARELA_PROVEEDOR=simulador`, modo por defecto `APROBAR`; el prefijo del token elige otro modo, ver `services/pagos/README.md` del backend). `PERIODO_GRACIA_DIAS=3` es **provisional**. Necesita `enable_events = true`. Al agregarlo, `bootstrap` crea su rol de despliegue y su repositorio de imágenes: actualice `AWS_DEPLOY_ROLE_ARNS` en el backend antes del primer `cicd/deploy-staging`. Se prueba por túnel con su clave (la crea `platform` en `solventa/staging/pagos-api-key`):
+**MS Pagos (HU18, HU19)** publica en el borde **solo** la gestión de cobros fallidos de la consola web (`/v1/pagos/cobros-fallidos`, NodePort 30084, con el JWT del asesor u operador: `ASESOR_JWT_SECRETO`, el mismo de Identidad). Cobrar, tokenizar y consultar transacciones manejan tokens de pago y siguen internos (SAQ-A): se declaran en `internal_path_prefixes` y la regla V13 impide publicarlos. Además publica el aviso de gracia vencida en `solventa.notificaciones` (HU19). Esquema propio `pagos` (salió de los reservados). Consume `solventa.suscripcion.comandos` en el grupo `solventa-pagos.cobros` y publica el resultado en `solventa.pagos.resultados`; MS Suscripción consume ese topic en `solventa-suscripcion.pagos`. La pasarela es el simulador (`PASARELA_PROVEEDOR=simulador`, modo por defecto `APROBAR`; el prefijo del token elige otro modo, ver `services/pagos/README.md` del backend). `PERIODO_GRACIA_DIAS=3` es **provisional**. Necesita `enable_events = true`. Al agregarlo, `bootstrap` crea su rol de despliegue y su repositorio de imágenes: actualice `AWS_DEPLOY_ROLE_ARNS` en el backend antes del primer `cicd/deploy-staging`. Se prueba por túnel con su clave (la crea `platform` en `solventa/staging/pagos-api-key`):
 
 ```sh
 KEY=$(aws secretsmanager get-secret-value --secret-id solventa/staging/pagos-api-key --query SecretString --output text | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
@@ -323,7 +323,7 @@ Implementa la ruta de entrada del documento de arquitectura: **cliente → Cloud
 | Módulo | Qué crea |
 |---|---|
 | `modules/cloudfront` | Distribución de CloudFront (HTTPS, sin caché de la API, sin Host) y el WAF vinculado |
-| `modules/api-gateway` | HTTP API, VPC Link, una integración por servicio y rutas por prefijo (`/v1/cotizaciones`, `/v1/clientes`, `/v1/siniestros`) con throttling |
+| `modules/api-gateway` | HTTP API, VPC Link, una integración por servicio y rutas por prefijo (`/v1/cotizaciones`, `/v1/clientes`, `/v1/suscripciones`, `/v1/siniestros`, `/v1/pagos/cobros-fallidos`) con throttling |
 | `modules/nlb` | NLB interno multi-AZ (capa 4), un listener y un grupo de destinos por servicio, y los nodos registrados desde su grupo de autoescalado |
 | `modules/service-workload` | Un Service `NodePort` fijo (`<servicio>-edge`) por servicio expuesto |
 
@@ -334,6 +334,11 @@ edge:
   node_port: 30080                  # 30000-32767, único; el listener del NLB usa el mismo puerto
   path_prefixes: [/v1/cotizaciones] # absolutos, sin barra final, únicos entre servicios
 ```
+
+Cada prefijo crea las rutas `ANY <prefijo>` y `ANY <prefijo>/{proxy+}`: publica ese segmento y todo lo que cuelga de él,
+no los segmentos hermanos (`/v1/pagos/cobros-fallidos` no publica `/v1/pagos/cobros`). Las rutas que nunca deben salir al
+borde se declaran en el servicio con `internal_path_prefixes`; la regla V13 rechaza cualquier `path_prefixes` (de
+cualquier servicio) igual a una de ellas, debajo de ella o más corto que la cubra (por ejemplo `/v1/pagos`).
 
 **Servicios de alto volumen (`high_volume`).** Un proveedor externo de eventos (HU27, `solventa-siniestros`) envía ráfagas legítimas: la meta EC-E2.1 son ≈ 1.670 eventos/s, y con los límites generales (1000 solicitudes por IP en 5 min en el WAF, 200 rps / 400 de ráfaga en el API Gateway) un solo proveedor recibiría 429 a los pocos minutos. Con `edge.high_volume: true` sus rutas:
 

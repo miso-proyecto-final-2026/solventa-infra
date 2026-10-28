@@ -1,0 +1,13 @@
+# rule: RULE v13 (borde de Pagos solo para cobros fallidos, HU19)
+# tests: environments/staging/baseline environments/staging/platform
+--- a/environments/staging/services.yaml
++++ b/environments/staging/services.yaml
+@@ -220,7 +220,7 @@
+     # `ANY <prefijo>/{proxy+}`, así que `/v1/pagos/cobros` no queda cubierto por `/v1/pagos/cobros-fallidos`.
+     edge:
+       node_port: 30084
+-      path_prefixes: [/v1/pagos/cobros-fallidos]
++      path_prefixes: [/v1/pagos]
+     # Rutas que manejan tokens de pago: siguen internas (otros servicios, o una persona por túnel con la clave; SAQ-A,
+     # EC-S2.1). La validación V13 impide que algún borde las publique, aunque sea con un prefijo más corto.
+     internal_path_prefixes: [/v1/pagos/cobros, /v1/pagos/tokenizar, /v1/pagos/transacciones]

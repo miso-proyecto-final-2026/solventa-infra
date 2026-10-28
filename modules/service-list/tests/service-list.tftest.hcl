@@ -699,3 +699,180 @@ run "events_need_the_bootstrap_variable_free_for_the_platform" {
 
   expect_failures = [var.config]
 }
+
+# HU19: Pagos publica solo la gestión de cobros fallidos; `/v1/pagos/cobros-fallidos` no está debajo de `/v1/pagos/cobros`.
+run "v13_edge_publishes_only_the_allowed_prefix" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-pagos"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas               = { min = 2, max = 2 }
+          edge                   = { node_port = 30084, path_prefixes = ["/v1/pagos/cobros-fallidos"] }
+          internal_path_prefixes = ["/v1/pagos/cobros", "/v1/pagos/tokenizar", "/v1/pagos/transacciones"]
+        },
+      ]
+    }
+  }
+
+  assert {
+    condition     = tolist(output.services["solventa-pagos"].edge.path_prefixes) == tolist(["/v1/pagos/cobros-fallidos"])
+    error_message = "RULE v13: an edge prefix that is not an internal path (nor covers one) must pass."
+  }
+}
+
+# V13: publicar una ruta interna tal cual falla.
+run "v13_edge_publishes_an_internal_path" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-pagos"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas               = { min = 2, max = 2 }
+          edge                   = { node_port = 30084, path_prefixes = ["/v1/pagos/cobros-fallidos", "/v1/pagos/tokenizar"] }
+          internal_path_prefixes = ["/v1/pagos/cobros", "/v1/pagos/tokenizar", "/v1/pagos/transacciones"]
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+# V13: un prefijo más corto (`/v1/pagos`) publicaría `/v1/pagos/cobros` por `{proxy+}`.
+run "v13_shorter_prefix_covers_an_internal_path" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-pagos"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas               = { min = 2, max = 2 }
+          edge                   = { node_port = 30084, path_prefixes = ["/v1/pagos"] }
+          internal_path_prefixes = ["/v1/pagos/cobros", "/v1/pagos/tokenizar", "/v1/pagos/transacciones"]
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+# V13: una ruta debajo de una interna también es interna.
+run "v13_prefix_below_an_internal_path" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-pagos"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas               = { min = 2, max = 2 }
+          edge                   = { node_port = 30084, path_prefixes = ["/v1/pagos/transacciones/abc"] }
+          internal_path_prefixes = ["/v1/pagos/cobros", "/v1/pagos/tokenizar", "/v1/pagos/transacciones"]
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+# V13: la regla vale entre servicios, no solo para el dueño de la ruta.
+run "v13_another_service_publishes_an_internal_path" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-pagos"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas               = { min = 2, max = 2 }
+          edge                   = null
+          internal_path_prefixes = ["/v1/pagos/cobros", "/v1/pagos/tokenizar", "/v1/pagos/transacciones"]
+        },
+        {
+          name        = "svc-otro"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas = { min = 2, max = 2 }
+          edge     = { node_port = 30084, path_prefixes = ["/v1/pagos/cobros"] }
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+# V13: las rutas internas tienen el mismo formato que los prefijos del borde.
+run "v13_invalid_internal_path" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-pagos"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas               = { min = 2, max = 2 }
+          edge                   = null
+          internal_path_prefixes = ["v1/pagos/cobros/"]
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}

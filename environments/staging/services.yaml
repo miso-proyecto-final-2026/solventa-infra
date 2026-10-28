@@ -177,7 +177,7 @@ services:
       path_prefixes: [/v1/siniestros]
       high_volume: true
 
-  - name: solventa-pagos              # MS Pagos (HU18): cobro de la prima con pasarela simulada; esquema propio `pagos`
+  - name: solventa-pagos              # MS Pagos (HU18, HU19): cobro de la prima con pasarela simulada; esquema propio `pagos`
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
     port: 8000
     health_path: /health
@@ -195,20 +195,33 @@ services:
       PASARELA_SIM_MODO: APROBAR
       # PROVISIONAL: la historia no fija la duración del período de gracia; validar con negocio (la gestión es de HU19).
       PERIODO_GRACIA_DIAS: "3"
+      # HU19 (supuesto a confirmar): un cobro fallido sale «próximo a vencer» cuando le quedan menos de 24 h de gracia.
+      PAGOS_HORAS_POR_VENCER: "24"
       # La firma de MSK (SASL/IAM) necesita la región; Pod Identity no la entrega.
       AWS_REGION: us-east-1
     secret_env_vars:
       # Claves de quien consulta o invoca la API interna (X-Service-Key). Vacía = nadie accede. Nace aleatoria en
       # Secrets Manager, nunca en git; con ella se prueba por túnel (ver README).
       PAGOS_API_KEYS: solventa/staging/pagos-api-key
+      # Token del asesor u operador (HU19, ADR-0008): Pagos lo valida en la gestión de cobros fallidos; el mismo secreto
+      # con el que Identidad lo firma. Sin él Pagos no arranca fuera de modo desarrollo.
+      ASESOR_JWT_SECRETO: solventa/staging/asesor-jwt-secreto
     # Consume el comando de cobro de la saga en el grupo `solventa-pagos.cobros` y publica el resultado por su cola
-    # de salida. La plataforma le inyecta KAFKA_BOOTSTRAP_SERVERS y AWS_DEFAULT_REGION.
+    # de salida. La plataforma le inyecta KAFKA_BOOTSTRAP_SERVERS y AWS_DEFAULT_REGION. HU19: avisa al operador de los
+    # cobros con la gracia vencida por `solventa.notificaciones`; sin ese permiso la cola de salida se detiene (publica en orden).
     eventos:
-      produce: [solventa.pagos.resultados]
+      produce: [solventa.pagos.resultados, solventa.notificaciones]
       consume: [solventa.suscripcion.comandos]
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
-    # Sin `edge`: es un servicio interno. Maneja tokens de pago y solo lo llaman otros servicios (o una persona por
-    # túnel con la clave); no se publica por CloudFront ni por el API Gateway (SAQ-A, EC-S2.1).
+    # Borde público (HU19, enmienda del ADR-0014): SOLO la gestión de cobros fallidos de la consola web, con el JWT del
+    # asesor u operador. No recibe datos de tarjeta ni devuelve el token. El API Gateway crea `ANY <prefijo>` y
+    # `ANY <prefijo>/{proxy+}`, así que `/v1/pagos/cobros` no queda cubierto por `/v1/pagos/cobros-fallidos`.
+    edge:
+      node_port: 30084
+      path_prefixes: [/v1/pagos/cobros-fallidos]
+    # Rutas que manejan tokens de pago: siguen internas (otros servicios, o una persona por túnel con la clave; SAQ-A,
+    # EC-S2.1). La validación V13 impide que algún borde las publique, aunque sea con un prefijo más corto.
+    internal_path_prefixes: [/v1/pagos/cobros, /v1/pagos/tokenizar, /v1/pagos/transacciones]
 
