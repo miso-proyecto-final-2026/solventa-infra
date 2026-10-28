@@ -27,6 +27,7 @@ override_data {
         "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
         "solventa-suscripcion"   = "solventa/staging/solventa-suscripcion/db"
         "solventa-siniestros"    = "solventa/staging/solventa-siniestros/db"
+        "solventa-pagos"         = "solventa/staging/solventa-pagos/db"
       }
       service_db_secret_versions = {
         "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
@@ -34,6 +35,7 @@ override_data {
         "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
         "solventa-suscripcion"   = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
         "solventa-siniestros"    = "cccccccc-dddd-eeee-ffff-000000000000"
+        "solventa-pagos"         = "dddddddd-eeee-ffff-0000-111111111111"
       }
     }
   }
@@ -47,6 +49,7 @@ variables {
     "solventa-perfilamiento" = "abc1234"
     "solventa-suscripcion"   = "abc1234"
     "solventa-siniestros"    = "abc1234"
+    "solventa-pagos"         = "abc1234"
   }
 }
 
@@ -83,6 +86,13 @@ run "plan_produces_the_full_workload_set" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-siniestros"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-pagos"]
     values = {
       image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
     }
@@ -128,6 +138,17 @@ run "plan_produces_the_full_workload_set" {
   assert {
     condition     = output.deployments["solventa-suscripcion"] == "solventa-suscripcion" && startswith(output.migration_jobs["solventa-suscripcion"], "solventa-suscripcion-migrate-")
     error_message = "The baseline must create the solventa-suscripcion Deployment and its migration Job."
+  }
+
+  # HU18: Pagos tiene su Deployment y su migración y es interno (maneja tokens de pago: sin borde público, SAQ-A).
+  assert {
+    condition     = output.deployments["solventa-pagos"] == "solventa-pagos" && startswith(output.migration_jobs["solventa-pagos"], "solventa-pagos-migrate-")
+    error_message = "The baseline must create the solventa-pagos Deployment and its migration Job."
+  }
+
+  assert {
+    condition     = !contains(keys(output.edge_node_ports), "solventa-pagos")
+    error_message = "RULE internal-only: solventa-pagos must not get an edge NodePort."
   }
 
   assert {
@@ -181,6 +202,13 @@ run "missing_image_fails_before_any_workload" {
     }
   }
 
+  override_data {
+    target = data.aws_ecr_images.service["solventa-pagos"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
   expect_failures = [terraform_data.image_check["solventa-backend"]]
 }
 
@@ -224,6 +252,7 @@ run "events_create_topics_and_inject_the_brokers" {
           "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
           "solventa-suscripcion"   = "solventa/staging/solventa-suscripcion/db"
           "solventa-siniestros"    = "solventa/staging/solventa-siniestros/db"
+          "solventa-pagos"         = "solventa/staging/solventa-pagos/db"
         }
         service_db_secret_versions = {
           "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
@@ -231,6 +260,7 @@ run "events_create_topics_and_inject_the_brokers" {
           "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
           "solventa-suscripcion"   = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
           "solventa-siniestros"    = "cccccccc-dddd-eeee-ffff-000000000000"
+          "solventa-pagos"         = "dddddddd-eeee-ffff-0000-111111111111"
         }
       }
     }
@@ -261,6 +291,11 @@ run "events_create_topics_and_inject_the_brokers" {
     values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
   }
 
+  override_data {
+    target = data.aws_ecr_images.service["solventa-pagos"]
+    values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
+  }
+
   assert {
     condition     = module.baseline.kafka_topics_job != null
     error_message = "HS2: with kafka_bootstrap_brokers in the platform, the topics Job exists."
@@ -279,6 +314,24 @@ run "events_create_topics_and_inject_the_brokers" {
   assert {
     condition     = local.services["solventa-siniestros"].settings["AWS_DEFAULT_REGION"] == "us-east-1" && can(regex("9098", local.services["solventa-siniestros"].settings["KAFKA_BOOTSTRAP_SERVERS"]))
     error_message = "HU27: a service with eventos receives the brokers and the region (the client signs the SASL/IAM token with it)."
+  }
+
+  assert {
+    condition     = toset(module.service_list.events_access["solventa-suscripcion"].consume) == toset(["solventa.pagos.resultados"])
+    error_message = "HU18: solventa-suscripcion consume solo los resultados del cobro."
+  }
+
+  assert {
+    condition = (
+      toset(module.service_list.events_access["solventa-pagos"].produce) == toset(["solventa.pagos.resultados"]) &&
+      toset(module.service_list.events_access["solventa-pagos"].consume) == toset(["solventa.suscripcion.comandos"])
+    )
+    error_message = "HU18: solventa-pagos consume el comando de cobro y publica solo el resultado."
+  }
+
+  assert {
+    condition     = local.services["solventa-pagos"].settings["AWS_DEFAULT_REGION"] == "us-east-1" && can(regex("9098", local.services["solventa-pagos"].settings["KAFKA_BOOTSTRAP_SERVERS"]))
+    error_message = "HU18: solventa-pagos receives the brokers and the region."
   }
 
   assert {

@@ -1,6 +1,6 @@
 # Lista única de microservicios (contrato C1). La leen bootstrap, platform y baseline.
 # Esquemas reservados para microservicios futuros (sin dueño, sin permisos).
-reserved_schemas: [pagos, socios]
+reserved_schemas: [socios]
 
 # Solo se eliminan si están aquí Y no tienen dueño. Vacío por defecto.
 drop_schemas: []
@@ -140,9 +140,11 @@ services:
       IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
       # La que Perfilamiento acepta en PERFILAMIENTO_API_KEYS (X-Service-Key).
       PERFILAMIENTO_SERVICE_KEY: solventa/staging/perfilamiento-api-key
-    # Publica la decisión (cobro y revisión asistida) a través de su cola de salida.
+    # Publica la decisión (cobro y revisión asistida) a través de su cola de salida y consume el resultado del cobro
+    # (HU18) en el grupo `solventa-suscripcion.pagos`.
     eventos:
       produce: [solventa.suscripcion.comandos, solventa.suscripcion.revision]
+      consume: [solventa.pagos.resultados]
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
@@ -182,4 +184,39 @@ services:
       node_port: 30083
       path_prefixes: [/v1/siniestros]
       high_volume: true
+
+  - name: solventa-pagos              # MS Pagos (HU18): cobro de la prima con pasarela simulada; esquema propio `pagos`
+    image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    replicas: { min: 2, max: 6 }
+    autoscaling: { cpu_target_percent: 70 }
+    owned_schemas: [pagos]
+    database_env_vars: [DATABASE_URL]  # el servicio acepta DATABASE_URL como alternativa a PAGOS_DATABASE_URL
+    cache_env_var: ""                  # Pagos no usa Redis
+    settings:
+      # Pasarela simulada (ADR-0014): el modo por defecto aprueba; el prefijo del token elige otro modo por cobro.
+      PASARELA_PROVEEDOR: simulador
+      PASARELA_SIM_MODO: APROBAR
+      # PROVISIONAL: la historia no fija la duración del período de gracia; validar con negocio (la gestión es de HU19).
+      PERIODO_GRACIA_DIAS: "3"
+      # La firma de MSK (SASL/IAM) necesita la región; Pod Identity no la entrega.
+      AWS_REGION: us-east-1
+    secret_env_vars:
+      # Claves de quien consulta o invoca la API interna (X-Service-Key). Vacía = nadie accede. Nace aleatoria en
+      # Secrets Manager, nunca en git; con ella se prueba por túnel (ver README).
+      PAGOS_API_KEYS: solventa/staging/pagos-api-key
+    # Consume el comando de cobro de la saga en el grupo `solventa-pagos.cobros` y publica el resultado por su cola
+    # de salida. La plataforma le inyecta KAFKA_BOOTSTRAP_SERVERS y AWS_DEFAULT_REGION.
+    eventos:
+      produce: [solventa.pagos.resultados]
+      consume: [solventa.suscripcion.comandos]
+    migration_command: [alembic, upgrade, head]
+    run_as_non_root: false
+    deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
+    # Sin `edge`: es un servicio interno. Maneja tokens de pago y solo lo llaman otros servicios (o una persona por
+    # túnel con la clave); no se publica por CloudFront ni por el API Gateway (SAQ-A, EC-S2.1).
 
