@@ -13,8 +13,20 @@ variable "service" {
       requests = object({ cpu = string, memory = string })
       limits   = object({ cpu = string, memory = string })
     })
-    replicas    = object({ min = number, max = number })
-    autoscaling = optional(object({ cpu_target_percent = optional(number, 70) }), {})
+    replicas = object({ min = number, max = number })
+    # Con `concurrent_requests_target`, el HPA escala por solicitudes en curso por pod y la CPU queda de respaldo.
+    autoscaling = optional(object({
+      cpu_target_percent         = optional(number, 70)
+      concurrent_requests_target = optional(number)
+      scale_up = optional(object({
+        pods                         = optional(number, 2)
+        percent                      = optional(number)
+        period_seconds               = optional(number, 60)
+        stabilization_window_seconds = optional(number, 30)
+      }), {})
+    }), {})
+    # Ruta que Prometheus recoge del pod (anotaciones prometheus.io/*); null = el pod no se recoge.
+    metrics_path = optional(string)
     edge = optional(object({
       node_port     = number
       path_prefixes = list(string)

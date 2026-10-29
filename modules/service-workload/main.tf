@@ -9,6 +9,13 @@ locals {
     "app.kubernetes.io/managed-by" = "terraform"
   }
 
+  # Los pods de migración NO deben coincidir con el selector del Deployment (`app.kubernetes.io/name = var.name`): el
+  # HPA y el PDB usan ese selector, y un pod Succeeded dentro de él cuenta con métrica 0 y sin request de CPU (HA03).
+  migration_labels = merge(local.labels, {
+    "app.kubernetes.io/name"      = "${var.name}-migrate"
+    "app.kubernetes.io/component" = "migration"
+  })
+
   connection_secret = "${var.name}-connection"
   settings_map      = "${var.name}-settings"
 
@@ -107,7 +114,7 @@ resource "kubernetes_cron_job_v1" "migrate" {
   metadata {
     name      = "${var.name}-migrate"
     namespace = var.namespace
-    labels    = local.labels
+    labels    = local.migration_labels
   }
 
   spec {
@@ -119,7 +126,7 @@ resource "kubernetes_cron_job_v1" "migrate" {
 
     job_template {
       metadata {
-        labels = local.labels
+        labels = local.migration_labels
       }
 
       spec {
@@ -128,7 +135,7 @@ resource "kubernetes_cron_job_v1" "migrate" {
 
         template {
           metadata {
-            labels = local.labels
+            labels = local.migration_labels
           }
 
           spec {
@@ -173,7 +180,7 @@ resource "kubernetes_job_v1" "migrate" {
   metadata {
     name      = "${var.name}-migrate-${local.migration_hash}"
     namespace = var.namespace
-    labels    = local.labels
+    labels    = local.migration_labels
   }
 
   spec {
@@ -181,7 +188,7 @@ resource "kubernetes_job_v1" "migrate" {
 
     template {
       metadata {
-        labels = local.labels
+        labels = local.migration_labels
       }
 
       spec {

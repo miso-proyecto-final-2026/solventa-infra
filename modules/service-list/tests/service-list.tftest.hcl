@@ -1,4 +1,4 @@
-# T008: un caso válido y un caso inválido por cada regla V1–V7 (contrato C1).
+# T008: un caso válido y un caso inválido por cada regla V1–V15 (contrato C1).
 
 variables {
   config = {
@@ -700,8 +700,114 @@ run "events_need_the_bootstrap_variable_free_for_the_platform" {
   expect_failures = [var.config]
 }
 
+run "v13_v14_concurrency_autoscaling_passes_through" {
+  command = plan
+
+  variables {
+    config = {
+      services = [{
+        name        = "solventa-backend"
+        image_tag   = "x"
+        port        = 8000
+        health_path = "/health"
+        resources = {
+          requests = { cpu = "1m", memory = "1Mi" }
+          limits   = { cpu = "1m", memory = "1Mi" }
+        }
+        replicas = { min = 2, max = 10 }
+        autoscaling = {
+          concurrent_requests_target = 3
+          scale_up                   = { pods = 4, percent = 100, period_seconds = 15, stabilization_window_seconds = 0 }
+        }
+        metrics_path = "/metrics"
+        edge         = { node_port = 30080, path_prefixes = ["/v1/cotizaciones"] }
+      }]
+    }
+  }
+
+  assert {
+    condition     = output.services["solventa-backend"].autoscaling.concurrent_requests_target == 3 && output.services["solventa-backend"].metrics_path == "/metrics"
+    error_message = "The concurrency target and metrics_path must reach the normalized service."
+  }
+
+  assert {
+    condition     = output.services["solventa-backend"].autoscaling.scale_up.percent == 100 && output.services["solventa-backend"].autoscaling.cpu_target_percent == 70
+    error_message = "scale_up must pass through and cpu_target_percent keep its default."
+  }
+}
+
+run "v13_metrics_path_under_an_edge_prefix_is_rejected" {
+  command = plan
+
+  variables {
+    config = {
+      services = [{
+        name        = "solventa-backend"
+        image_tag   = "x"
+        port        = 8000
+        health_path = "/health"
+        resources = {
+          requests = { cpu = "1m", memory = "1Mi" }
+          limits   = { cpu = "1m", memory = "1Mi" }
+        }
+        replicas     = { min = 2, max = 10 }
+        metrics_path = "/v1/cotizaciones/metrics"
+        edge         = { node_port = 30080, path_prefixes = ["/v1/cotizaciones"] }
+      }]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "v13_health_path_equal_to_an_edge_prefix_is_rejected" {
+  command = plan
+
+  variables {
+    config = {
+      services = [{
+        name        = "solventa-backend"
+        image_tag   = "x"
+        port        = 8000
+        health_path = "/health"
+        resources = {
+          requests = { cpu = "1m", memory = "1Mi" }
+          limits   = { cpu = "1m", memory = "1Mi" }
+        }
+        replicas = { min = 2, max = 10 }
+        edge     = { node_port = 30080, path_prefixes = ["/health"] }
+      }]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "v14_concurrency_target_without_metrics_path_is_rejected" {
+  command = plan
+
+  variables {
+    config = {
+      services = [{
+        name        = "solventa-backend"
+        image_tag   = "x"
+        port        = 8000
+        health_path = "/health"
+        resources = {
+          requests = { cpu = "1m", memory = "1Mi" }
+          limits   = { cpu = "1m", memory = "1Mi" }
+        }
+        replicas    = { min = 2, max = 10 }
+        autoscaling = { concurrent_requests_target = 3 }
+      }]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
 # HU19: Pagos publica solo la gestión de cobros fallidos; `/v1/pagos/cobros-fallidos` no está debajo de `/v1/pagos/cobros`.
-run "v13_edge_publishes_only_the_allowed_prefix" {
+run "v15_edge_publishes_only_the_allowed_prefix" {
   command = plan
 
   variables {
@@ -730,8 +836,8 @@ run "v13_edge_publishes_only_the_allowed_prefix" {
   }
 }
 
-# V13: publicar una ruta interna tal cual falla.
-run "v13_edge_publishes_an_internal_path" {
+# V15: publicar una ruta interna tal cual falla.
+run "v15_edge_publishes_an_internal_path" {
   command = plan
 
   variables {
@@ -757,8 +863,8 @@ run "v13_edge_publishes_an_internal_path" {
   expect_failures = [var.config]
 }
 
-# V13: un prefijo más corto (`/v1/pagos`) publicaría `/v1/pagos/cobros` por `{proxy+}`.
-run "v13_shorter_prefix_covers_an_internal_path" {
+# V15: un prefijo más corto (`/v1/pagos`) publicaría `/v1/pagos/cobros` por `{proxy+}`.
+run "v15_shorter_prefix_covers_an_internal_path" {
   command = plan
 
   variables {
@@ -784,8 +890,8 @@ run "v13_shorter_prefix_covers_an_internal_path" {
   expect_failures = [var.config]
 }
 
-# V13: una ruta debajo de una interna también es interna.
-run "v13_prefix_below_an_internal_path" {
+# V15: una ruta debajo de una interna también es interna.
+run "v15_prefix_below_an_internal_path" {
   command = plan
 
   variables {
@@ -811,8 +917,8 @@ run "v13_prefix_below_an_internal_path" {
   expect_failures = [var.config]
 }
 
-# V13: la regla vale entre servicios, no solo para el dueño de la ruta.
-run "v13_another_service_publishes_an_internal_path" {
+# V15: la regla vale entre servicios, no solo para el dueño de la ruta.
+run "v15_another_service_publishes_an_internal_path" {
   command = plan
 
   variables {
@@ -850,8 +956,8 @@ run "v13_another_service_publishes_an_internal_path" {
   expect_failures = [var.config]
 }
 
-# V13: las rutas internas tienen el mismo formato que los prefijos del borde.
-run "v13_invalid_internal_path" {
+# V15: las rutas internas tienen el mismo formato que los prefijos del borde.
+run "v15_invalid_internal_path" {
   command = plan
 
   variables {

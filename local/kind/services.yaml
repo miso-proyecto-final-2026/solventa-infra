@@ -11,7 +11,12 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
     replicas: { min: 2, max: 4 }
-    autoscaling: { cpu_target_percent: 70 }
+    # Misma métrica que staging (HA03); objetivo y subida iguales para probar la cadena app -> Prometheus -> HPA.
+    autoscaling:
+      cpu_target_percent: 70
+      concurrent_requests_target: 3
+      scale_up: { pods: 4, percent: 100, period_seconds: 15, stabilization_window_seconds: 0 }
+    metrics_path: /metrics
     owned_schemas: [public, cotizacion]
     database_env_vars: [DATABASE_URL, COTIZACION_DATABASE_URL]
     cache_env_var: REDIS_URL

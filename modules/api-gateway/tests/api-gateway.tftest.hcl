@@ -56,6 +56,14 @@ run "each_prefix_has_exact_and_proxy_routes" {
     ])
     error_message = "RULE routes: the public paths must match the prefixes declared in services.yaml."
   }
+
+  assert {
+    condition = alltrue([
+      for r in aws_apigatewayv2_route.this :
+      r.route_key != "$default" && r.route_key != "ANY /{proxy+}" && !strcontains(r.route_key, "/metrics") && !strcontains(r.route_key, "/health")
+    ])
+    error_message = "RULE no-catch-all: only declared prefixes are routed; no $default or /{proxy+} route that would publish /metrics or /health."
+  }
 }
 
 run "throttling_is_enabled" {

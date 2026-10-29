@@ -9,5 +9,5 @@
 -      path_prefixes: [/v1/pagos/cobros-fallidos]
 +      path_prefixes: [/v1/pagos]
      # Rutas que manejan tokens de pago: siguen internas (otros servicios, o una persona por túnel con la clave; SAQ-A,
-     # EC-S2.1). La validación V13 impide que algún borde las publique, aunque sea con un prefijo más corto.
+     # EC-S2.1). La validación V15 impide que algún borde las publique, aunque sea con un prefijo más corto.
      internal_path_prefixes: [/v1/pagos/cobros, /v1/pagos/tokenizar, /v1/pagos/transacciones]

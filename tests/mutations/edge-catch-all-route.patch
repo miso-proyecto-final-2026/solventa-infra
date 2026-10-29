@@ -1,0 +1,13 @@
+# rule: RULE no-catch-all
+# tests: modules/api-gateway
+--- a/modules/api-gateway/main.tf
++++ b/modules/api-gateway/main.tf
+@@ -9,7 +9,7 @@
+     for name, s in var.services : merge([
+       for p in s.path_prefixes : {
+         "${name}|ANY ${p}"          = { service = name }
+-        "${name}|ANY ${p}/{proxy+}" = { service = name }
++        "${name}|ANY /{proxy+}"     = { service = name }
+       }
+     ]...)
+   ]...)

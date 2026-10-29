@@ -39,7 +39,7 @@ Tres raíces de Terraform con ciclos de vida distintos:
 |---|---|---|
 | `bootstrap/` | Bucket S3 de estado (bloqueo nativo), proveedor OIDC de GitHub y roles de CI | Una vez; **sobrevive al teardown**, no cuesta |
 | `environments/staging/platform/` | VPC (2 AZ), EKS `solventa-staging` (3 × `t3.medium`), ECR, RDS PostgreSQL 16 Multi-AZ, ElastiCache Redis con failover, secretos | Bajo demanda |
-| `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
+| `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Prometheus y Prometheus Adapter (HPA por concurrencia), Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
 
 - La lista de servicios vive **una sola vez** en `environments/staging/services.yaml` (contrato C1).
 - `modules/baseline` es la composición compartida: la usan `environments/staging/baseline` (AWS) y
@@ -266,7 +266,12 @@ kubectl -n solventa-system get jobs                     # db-access Complete
 kubectl -n staging get jobs                             # solventa-backend-migrate-<hash> Complete
 kubectl -n staging logs job/<job-de-migración>
 kubectl -n staging get pods -o wide                     # ≥ 2 réplicas en nodos de ambas AZ
+kubectl -n staging get pods -l app.kubernetes.io/name=<servicio>   --field-selector=status.phase=Succeeded                # vacío
 ```
+
+Los pods de migración llevan `app.kubernetes.io/name = <servicio>-migrate` (y `component = migration`) para quedar
+fuera del selector del Deployment, que también usan el HPA y el PDB: un pod `Succeeded` dentro de él contaría con
+métrica 0 y, sin request de CPU, dejaría la métrica de CPU del HPA en `<unknown>` (HA03, `RULE migration-labels`).
 
 ## Acceso privado al backend y pruebas de humo
 
@@ -305,7 +310,7 @@ curl -s -XPOST "$URL/v1/siniestros/eventos" -H "X-Service-Key: $KEY" -H 'Content
 curl -s -H "X-Service-Key: $KEY" "$URL/v1/siniestros/eventos/resumen"                                                                     # recibidos, publicados, procesados
 ```
 
-**MS Pagos (HU18, HU19)** publica en el borde **solo** la gestión de cobros fallidos de la consola web (`/v1/pagos/cobros-fallidos`, NodePort 30084, con el JWT del asesor u operador: `ASESOR_JWT_SECRETO`, el mismo de Identidad). Cobrar, tokenizar y consultar transacciones manejan tokens de pago y siguen internos (SAQ-A): se declaran en `internal_path_prefixes` y la regla V13 impide publicarlos. Además publica el aviso de gracia vencida en `solventa.notificaciones` (HU19). Esquema propio `pagos` (salió de los reservados). Consume `solventa.suscripcion.comandos` en el grupo `solventa-pagos.cobros` y publica el resultado en `solventa.pagos.resultados`; MS Suscripción consume ese topic en `solventa-suscripcion.pagos`. La pasarela es el simulador (`PASARELA_PROVEEDOR=simulador`, modo por defecto `APROBAR`; el prefijo del token elige otro modo, ver `services/pagos/README.md` del backend). `PERIODO_GRACIA_DIAS=3` es **provisional**. Necesita `enable_events = true`. Al agregarlo, `bootstrap` crea su rol de despliegue y su repositorio de imágenes: actualice `AWS_DEPLOY_ROLE_ARNS` en el backend antes del primer `cicd/deploy-staging`. Se prueba por túnel con su clave (la crea `platform` en `solventa/staging/pagos-api-key`):
+**MS Pagos (HU18, HU19)** publica en el borde **solo** la gestión de cobros fallidos de la consola web (`/v1/pagos/cobros-fallidos`, NodePort 30084, con el JWT del asesor u operador: `ASESOR_JWT_SECRETO`, el mismo de Identidad). Cobrar, tokenizar y consultar transacciones manejan tokens de pago y siguen internos (SAQ-A): se declaran en `internal_path_prefixes` y la regla V15 impide publicarlos. Además publica el aviso de gracia vencida en `solventa.notificaciones` (HU19). Esquema propio `pagos` (salió de los reservados). Consume `solventa.suscripcion.comandos` en el grupo `solventa-pagos.cobros` y publica el resultado en `solventa.pagos.resultados`; MS Suscripción consume ese topic en `solventa-suscripcion.pagos`. La pasarela es el simulador (`PASARELA_PROVEEDOR=simulador`, modo por defecto `APROBAR`; el prefijo del token elige otro modo, ver `services/pagos/README.md` del backend). `PERIODO_GRACIA_DIAS=3` es **provisional**. Necesita `enable_events = true`. Al agregarlo, `bootstrap` crea su rol de despliegue y su repositorio de imágenes: actualice `AWS_DEPLOY_ROLE_ARNS` en el backend antes del primer `cicd/deploy-staging`. Se prueba por túnel con su clave (la crea `platform` en `solventa/staging/pagos-api-key`):
 
 ```sh
 KEY=$(aws secretsmanager get-secret-value --secret-id solventa/staging/pagos-api-key --query SecretString --output text | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
@@ -337,7 +342,7 @@ edge:
 
 Cada prefijo crea las rutas `ANY <prefijo>` y `ANY <prefijo>/{proxy+}`: publica ese segmento y todo lo que cuelga de él,
 no los segmentos hermanos (`/v1/pagos/cobros-fallidos` no publica `/v1/pagos/cobros`). Las rutas que nunca deben salir al
-borde se declaran en el servicio con `internal_path_prefixes`; la regla V13 rechaza cualquier `path_prefixes` (de
+borde se declaran en el servicio con `internal_path_prefixes`; la regla V15 rechaza cualquier `path_prefixes` (de
 cualquier servicio) igual a una de ellas, debajo de ella o más corto que la cubra (por ejemplo `/v1/pagos`).
 
 **Servicios de alto volumen (`high_volume`).** Un proveedor externo de eventos (HU27, `solventa-siniestros`) envía ráfagas legítimas: la meta EC-E2.1 son ≈ 1.670 eventos/s, y con los límites generales (1000 solicitudes por IP en 5 min en el WAF, 200 rps / 400 de ráfaga en el API Gateway) un solo proveedor recibiría 429 a los pocos minutos. Con `edge.high_volume: true` sus rutas:
@@ -383,10 +388,49 @@ paramétrico (HS2). Lo crea `platform`; `baseline` crea los topics.
 - **Teardown:** `scripts/verificar-teardown.sh` revisa también el clúster MSK y su grupo de logs. Los logs de los brokers van a
   CloudWatch (`/aws/msk/<nombre>`, 14 días) y sirven de evidencia de auditoría.
 
+## Autoescalado por solicitudes concurrentes (HA03)
+
+Con caché, la CPU de Cotización no sigue al volumen (hallazgo de HA02) y el HPA por CPU no escala. Por eso
+`solventa-backend` escala por **solicitudes en curso por pod** (ADR-0015 de `solventa-backend`):
+
+```text
+pod (/metrics, gauge http_requests_in_flight) --scrape 15 s--> Prometheus --avg_over_time 30 s--> Prometheus Adapter
+  --custom.metrics.k8s.io--> HPA (Pods: AverageValue; CPU de respaldo)
+```
+
+- `modules/cluster-addons` instala, en el namespace `monitoring`, un **Prometheus mínimo** (solo el trabajo
+  `kubernetes-pods`; sin Alertmanager, exportadores ni volumen persistente; retención de 2 h) y **Prometheus Adapter**
+  con una sola regla. Lo usan igual AWS y `local/kind`.
+- Un servicio se suma declarando en `services.yaml`:
+
+  ```yaml
+  metrics_path: /metrics             # anota el pod con prometheus.io/scrape, port y path
+  autoscaling:
+    cpu_target_percent: 70           # sigue como respaldo: el HPA toma la recomendación más alta
+    concurrent_requests_target: 16   # solicitudes en curso promedio por pod (requiere metrics_path, V14)
+    scale_up: { pods: 4, percent: 100, period_seconds: 15, stabilization_window_seconds: 0 }
+  ```
+
+  `scale_up` es opcional; por defecto se queda la política de siempre (2 pods cada 60 s tras 30 s de estabilización).
+  Hoy solo `solventa-backend` declara la métrica y abre la subida; la bajada es igual para todos (1 pod cada 60 s tras 300 s).
+- El objetivo de 16 sale de la ley de Little calibrada con el humo de la sesión de HA03 del 2026-10-25 (ADR-0015 de
+  `solventa-backend`, Supuesto 3); partió de una estimación de 3.
+- **`/metrics` no se publica.** El API Gateway solo enruta los prefijos de `edge` (no hay ruta `$default` ni
+  `/{proxy+}`), y la regla V13 impide que `metrics_path` o `health_path` queden bajo un prefijo público. Prometheus lo
+  recoge directo de la IP del pod. **Dentro de la VPC sí es legible, y se acepta:** comparte puerto con la app, así
+  que llega por el NodePort del NLB interno y por el Service `ClusterIP` (no hay NetworkPolicy: el VPC CNI no tiene
+  activado el agente de políticas). Es un único gauge, sin etiquetas ni datos de clientes. Mejora futura: servirlo en
+  un puerto aparte que ningún Service ni NodePort exponga y, con NetworkPolicy, abrirlo solo a `monitoring`
+  (ADR-0015 de `solventa-backend`).
+- Si Prometheus o el adaptador caen, el HPA marca la métrica como no disponible y sigue escalando por CPU.
+
+Comprobar la cadena: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/staging/pods/*/http_requests_in_flight"`
+y `kubectl -n staging describe hpa solventa-backend` (dos métricas).
+
 ## Añadir un microservicio
 
 1. Añade una entrada a `environments/staging/services.yaml` (formato en `specs/001-aws-eks-staging-infra/contracts/service-entry.md`).
-   Las validaciones V1–V7 fallan en el plan con mensajes claros.
+   Las validaciones V1–V15 fallan en el plan con mensajes claros.
 2. `terraform -chdir=bootstrap apply` — crea el rol de despliegue del servicio (solo `+`).
 3. `terraform -chdir=environments/staging/platform apply -var-file=staging.tfvars` — repositorio ECR, secreto de BD y access entry (solo `+`).
 4. Publica la imagen del nuevo servicio.
