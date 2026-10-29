@@ -137,6 +137,20 @@ else
   echo "(ninguno)"
 fi
 
+# Buckets de staging (evidencias KYC y documentos de póliza, HU20). Llevan las etiquetas del proyecto, pero un bucket con
+# objetos que sobrevive a un destroy a medias guarda datos: se comprueba por nombre, aparte del barrido por etiquetas.
+# El bucket del estado de Terraform (solventa-tfstate-…) no empieza por este prefijo y se conserva a propósito.
+echo "== Buckets S3 de staging ($PROJECT-$ENVIRONMENT-…: evidencias KYC y documentos de póliza)"
+buckets=$(aws s3api list-buckets \
+  --query "Buckets[?starts_with(Name, '$PROJECT-$ENVIRONMENT-')].Name" --output text 2>/dev/null || true)
+[ "$buckets" = "None" ] && buckets=""
+if [ -n "$buckets" ]; then
+  echo "$buckets" | tr '\t' '\n'
+  remaining=1
+else
+  echo "(ninguno)"
+fi
+
 if [ "$remaining" -ne 0 ]; then
   echo "FALLO: quedan recursos de staging. Revísalos y elimínalos antes de dar por terminado el teardown." >&2
   exit 1

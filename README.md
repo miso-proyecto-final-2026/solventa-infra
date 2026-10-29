@@ -452,6 +452,18 @@ Notas:
   `solventa-identidad` con `s3:PutObject` bajo `kyc/`. El baseline entrega el nombre y la región al servicio
   (`KYC_EVIDENCIAS_BUCKET`, `AWS_DEFAULT_REGION`). La lectura para revisión manual no está habilitada: requeriría otro rol.
   En staging el bucket se crea con `force_destroy` porque solo guarda evidencias sintéticas y se destruye tras cada sesión.
+- **Documentos de póliza (HU20):** `platform` crea una segunda instancia del módulo `evidence-bucket`,
+  `solventa-<env>-polizas-<cuenta>` (cifrado, sin acceso público, solo TLS y versionado). Se diferencia del de KYC en tres
+  cosas: los objetos **no expiran** (`retention_days = null`: son documentos contractuales), las versiones antiguas se
+  conservan 30 días (`noncurrent_days`) y **no crea rol ni asociación de Pod Identity**: EKS admite una sola asociación por
+  cuenta de servicio y `solventa-suscripcion` ya tiene la de MSK, así que `existing_role_name` adjunta a ese rol una política
+  `write-polizas` con `s3:PutObject` solo bajo `polizas/`. Por eso el bucket se crea junto con el bus de eventos
+  (`enable_events = true`; sin él, `polizas_bucket` es `null` y Suscripción solo puede usar la carpeta local en desarrollo).
+  El baseline entrega `POLIZAS_BUCKET` y `AWS_DEFAULT_REGION`, y `services.yaml` permite a Suscripción publicar
+  `solventa.polizas.ciclovida` y suma `/v1/polizas` a su borde. No hay permiso de lectura: la descarga es de HU22. Como el de
+  KYC, se crea con `force_destroy` en staging. En producción la retención está por definir. **Migración del estado:** al
+  añadir `count` al rol y a la asociación del módulo, bloques `moved` los trasladan en el estado; el plan del bucket de KYC
+  no debe mostrar destrucciones.
 - **Eventos (HS2):** si el servicio publica o consume, declara `eventos: { produce: [...], consume: [...] }` con topics ya declarados en `topics:`; `platform` crea su rol de Pod Identity y `baseline` le entrega `KAFKA_BOOTSTRAP_SERVERS`. Ver [Bus de eventos (MSK)](#bus-de-eventos-msk).
 - Un servicio nuevo necesita su imagen en ECR antes del baseline (paso 4); el baseline falla antes de tocar cargas si no está.
 - El plan del baseline muestra solo `+`, **salvo** los objetos de `db-access` (Job y ConfigMap de SQL reemplazados, ExternalSecret de contraseñas actualizado) porque cambia su hash.

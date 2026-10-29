@@ -1,0 +1,13 @@
+# rule: RULE least-privilege
+# tests: modules/evidence-bucket environments/staging/platform
+--- a/modules/evidence-bucket/main.tf
++++ b/modules/evidence-bucket/main.tf
+@@ -136,7 +136,7 @@
+     Statement = [{
+       Effect   = "Allow"
+       Action   = ["s3:PutObject"]
+-      Resource = "${local.bucket_arn}/${var.prefix}*"
++      Resource = "${local.bucket_arn}/*"
+     }]
+   })
+ }

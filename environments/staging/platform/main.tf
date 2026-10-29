@@ -98,6 +98,39 @@ resource "terraform_data" "require_identidad" {
   }
 }
 
+# Documentos de póliza de MS Suscripción (HU20): segunda instancia del módulo. El permiso de escritura (solo PutObject bajo
+# polizas/) se adjunta al rol de MSK de Suscripción, porque EKS admite una sola asociación de Pod Identity por cuenta de
+# servicio. Los objetos no expiran (las pólizas son documentos contractuales) y las versiones antiguas se conservan 30 días.
+module "polizas_documentos" {
+  count  = var.enable_events ? 1 : 0
+  source = "../../../modules/evidence-bucket"
+
+  bucket_name        = "solventa-${var.name}-polizas-${local.account_id}"
+  cluster_name       = module.eks.cluster_name
+  service_account    = "solventa-suscripcion"
+  prefix             = "polizas/"
+  existing_role_name = module.msk[0].client_role_names["solventa-suscripcion"]
+  policy_name        = "write-polizas"
+  retention_days     = null
+  noncurrent_days    = 30
+  # Staging bajo demanda: solo guarda documentos sintéticos y se destruye tras cada sesión.
+  force_destroy = true
+
+  tags = local.tags
+
+  depends_on = [terraform_data.require_suscripcion]
+}
+
+# El permiso del bucket de pólizas va en el rol de MSK de Suscripción: sin ese servicio y sin eventos no tiene sentido crearlo.
+resource "terraform_data" "require_suscripcion" {
+  lifecycle {
+    precondition {
+      condition     = contains(keys(module.service_list.events_access), "solventa-suscripcion")
+      error_message = "services.yaml must define solventa-suscripcion with eventos: the polizas bucket policy is attached to its MSK role."
+    }
+  }
+}
+
 module "postgres" {
   source = "../../../modules/postgres"
 

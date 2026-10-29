@@ -1,10 +1,18 @@
 # Bucket de evidencias de identidad (HU02, criterio 7): cifrado, sin acceso público, solo TLS y con
 # escritura limitada al servicio que las genera. La lectura queda fuera: la revisión manual de un caso
 # EN_REVISION usará otro rol con su propia política.
+#
+# También sirve para los documentos de póliza (HU20) con `existing_role_name`: el permiso de escritura se
+# adjunta al rol que el servicio ya asume (EKS admite una sola asociación de Pod Identity por cuenta de
+# servicio) y la retención puede ser indefinida (`retention_days = null`).
 
 locals {
   # Derivado del nombre (conocido en el plan) para que las políticas se puedan comprobar sin aplicar.
   bucket_arn = "arn:aws:s3:::${var.bucket_name}"
+
+  # Con `existing_role_name` no se crea rol ni asociación: la política se adjunta al rol dado.
+  create_role      = var.existing_role_name == null
+  writer_role_name = local.create_role ? aws_iam_role.writer[0].name : var.existing_role_name
 }
 
 resource "aws_s3_bucket" "this" {
@@ -60,12 +68,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
 
     filter {}
 
-    expiration {
-      days = var.retention_days
+    # Sin `retention_days` los objetos actuales no expiran (documentos de póliza); las versiones antiguas sí.
+    dynamic "expiration" {
+      for_each = var.retention_days == null ? [] : [var.retention_days]
+
+      content {
+        days = expiration.value
+      }
     }
 
     noncurrent_version_expiration {
-      noncurrent_days = 1
+      noncurrent_days = var.noncurrent_days
     }
 
     abort_incomplete_multipart_upload {
@@ -98,6 +111,8 @@ resource "aws_s3_bucket_policy" "tls_only" {
 # Acceso del servicio: Pod Identity, solo PutObject bajo el prefijo de evidencias
 # ---------------------------------------------------------------------------
 resource "aws_iam_role" "writer" {
+  count = local.create_role ? 1 : 0
+
   name = "${var.cluster_name}-${var.service_account}-evidencias"
 
   assume_role_policy = jsonencode({
@@ -113,8 +128,8 @@ resource "aws_iam_role" "writer" {
 }
 
 resource "aws_iam_role_policy" "writer" {
-  name = "write-evidencias"
-  role = aws_iam_role.writer.id
+  name = var.policy_name
+  role = local.writer_role_name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -127,10 +142,23 @@ resource "aws_iam_role_policy" "writer" {
 }
 
 resource "aws_eks_pod_identity_association" "writer" {
+  count = local.create_role ? 1 : 0
+
   cluster_name    = var.cluster_name
   namespace       = var.namespace
   service_account = var.service_account
-  role_arn        = aws_iam_role.writer.arn
+  role_arn        = aws_iam_role.writer[0].arn
 
   tags = var.tags
+}
+
+# El rol y la asociación pasaron a tener `count`: se mueven en el estado para no recrearlos (el bucket de KYC ya existe).
+moved {
+  from = aws_iam_role.writer
+  to   = aws_iam_role.writer[0]
+}
+
+moved {
+  from = aws_eks_pod_identity_association.writer
+  to   = aws_eks_pod_identity_association.writer[0]
 }
