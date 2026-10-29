@@ -176,9 +176,12 @@ services:
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
     # Publica los eventos que recibe y los consume en el grupo `solventa-siniestros.recepcion` (debe empezar por el nombre
     # del servicio). La plataforma le inyecta KAFKA_BOOTSTRAP_SERVERS y AWS_DEFAULT_REGION.
+    # HU28: al evaluar la condición de cada póliza publica `indemnizacion_solicitada` en `solventa.siniestros.comandos`
+    # (la consume MS Pagos) y mantiene su copia de pólizas paramétricas con el ciclo de vida de la póliza, en el grupo
+    # `solventa-siniestros.polizas`.
     eventos:
-      produce: [solventa.siniestros.eventos]
-      consume: [solventa.siniestros.eventos]
+      produce: [solventa.siniestros.eventos, solventa.siniestros.comandos]
+      consume: [solventa.siniestros.eventos, solventa.polizas.ciclovida]
     # Borde público: el proveedor de eventos es externo. `high_volume` lo exime del límite global por IP y del throttling
     # general (ráfagas legítimas, EC-E2.1) y le aplica uno propio y más alto; el resto de rutas conserva los límites bajos.
     edge:
