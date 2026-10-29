@@ -500,6 +500,13 @@ scripts/drill-trafico.sh http://localhost:8000 900 1     # deja un log con hora,
 | Failover de caché | `aws elasticache test-failover --replication-group-id solventa-staging-cache --node-group-id 0001` | ≤ 1 min |
 | Pérdida de una AZ | `kubectl cordon` y `kubectl drain --ignore-daemonsets --delete-emptydir-data` de los nodos de una AZ | reprogramación ≤ 2 min |
 
+**Dispersión entre zonas.** Las réplicas de cada servicio se reparten por zona con `DoNotSchedule` (máximo una de
+diferencia) y `node_taints_policy = Honor`. Con `ScheduleAnyway` el scheduler a veces las dejaba todas en una AZ. Los
+nodos acordonados o caídos tienen un taint `NoSchedule` y no cuentan como zona, así que durante el drill las réplicas de
+la AZ perdida se reprograman en la superviviente. Si una zona sana se queda sin capacidad, las réplicas nuevas quedan
+`Pending` en lugar de amontonarse en la otra: revisa `kubectl -n staging get pods -o wide` y los eventos del scheduler.
+Por nodo la dispersión sigue siendo preferencia (`ScheduleAnyway`) para no bloquear el escalado.
+
 Cómo registrar resultados:
 
 1. Anota la hora de inicio de cada falla y la del primer `201` posterior en el log: la diferencia es el tiempo de recuperación.

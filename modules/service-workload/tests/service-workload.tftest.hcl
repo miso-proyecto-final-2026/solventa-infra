@@ -53,8 +53,19 @@ run "deployment_follows_the_workload_contract" {
   }
 
   assert {
-    condition     = alltrue([for c in kubernetes_deployment_v1.this.spec[0].template[0].spec[0].topology_spread_constraint : c.when_unsatisfiable == "ScheduleAnyway"])
-    error_message = "RULE spread: topology spread must use ScheduleAnyway so the AZ drill can reschedule."
+    condition = length([
+      for c in kubernetes_deployment_v1.this.spec[0].template[0].spec[0].topology_spread_constraint : c
+      if c.topology_key == "topology.kubernetes.io/zone" && c.when_unsatisfiable == "DoNotSchedule" && c.node_taints_policy == "Honor"
+    ]) == 1
+    error_message = "RULE spread: the zone spread must be DoNotSchedule with node_taints_policy = Honor so replicas spread across AZs and the AZ drill can still reschedule (HA04)."
+  }
+
+  assert {
+    condition = length([
+      for c in kubernetes_deployment_v1.this.spec[0].template[0].spec[0].topology_spread_constraint : c
+      if c.topology_key == "kubernetes.io/hostname" && c.when_unsatisfiable == "ScheduleAnyway"
+    ]) == 1
+    error_message = "RULE spread: the node spread must stay ScheduleAnyway so scaling is not blocked by the node count (HA03)."
   }
 
   assert {
