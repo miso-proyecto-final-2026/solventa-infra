@@ -23,11 +23,14 @@ resource "kubernetes_deployment_v1" "this" {
         service_account_name            = kubernetes_service_account_v1.this.metadata[0].name
         automount_service_account_token = false
 
-        # ScheduleAnyway: permite reprogramar réplicas en la AZ superviviente durante el drill (research R11).
+        # Por zona, DoNotSchedule: con ScheduleAnyway el scheduler a veces dejaba todas las réplicas en una AZ (HA04, c6).
+        # node_taints_policy = Honor: los nodos acordonados o caídos (taints NoSchedule) no cuentan como dominio, así que
+        # al perder una AZ las réplicas se reprograman en la superviviente en lugar de quedar Pending por el sesgo.
         topology_spread_constraint {
           max_skew           = 1
           topology_key       = "topology.kubernetes.io/zone"
-          when_unsatisfiable = "ScheduleAnyway"
+          when_unsatisfiable = "DoNotSchedule"
+          node_taints_policy = "Honor"
           label_selector {
             match_labels = {
               "app.kubernetes.io/name" = var.name
@@ -35,6 +38,7 @@ resource "kubernetes_deployment_v1" "this" {
           }
         }
 
+        # Por nodo sigue siendo preferencia: con pocos nodos y hasta 10 réplicas, exigirla bloquearía el escalado (HA03).
         topology_spread_constraint {
           max_skew           = 1
           topology_key       = "kubernetes.io/hostname"
