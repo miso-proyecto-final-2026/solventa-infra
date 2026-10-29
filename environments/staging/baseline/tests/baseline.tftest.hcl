@@ -140,15 +140,15 @@ run "plan_produces_the_full_workload_set" {
     error_message = "The baseline must create the solventa-suscripcion Deployment and its migration Job."
   }
 
-  # HU18: Pagos tiene su Deployment y su migración y es interno (maneja tokens de pago: sin borde público, SAQ-A).
+  # HU18: Pagos tiene su Deployment y su migración. HU19: se publica por el borde solo para la gestión de cobros fallidos.
   assert {
     condition     = output.deployments["solventa-pagos"] == "solventa-pagos" && startswith(output.migration_jobs["solventa-pagos"], "solventa-pagos-migrate-")
     error_message = "The baseline must create the solventa-pagos Deployment and its migration Job."
   }
 
   assert {
-    condition     = !contains(keys(output.edge_node_ports), "solventa-pagos")
-    error_message = "RULE internal-only: solventa-pagos must not get an edge NodePort."
+    condition     = output.edge_node_ports["solventa-pagos"] == 30084
+    error_message = "RULE edge-nodeport: solventa-pagos must get its edge NodePort (30084) for the failed-payments console (HU19)."
   }
 
   assert {
@@ -323,10 +323,25 @@ run "events_create_topics_and_inject_the_brokers" {
 
   assert {
     condition = (
-      toset(module.service_list.events_access["solventa-pagos"].produce) == toset(["solventa.pagos.resultados"]) &&
+      toset(module.service_list.events_access["solventa-pagos"].produce) == toset(["solventa.pagos.resultados", "solventa.notificaciones"]) &&
       toset(module.service_list.events_access["solventa-pagos"].consume) == toset(["solventa.suscripcion.comandos"])
     )
-    error_message = "HU18: solventa-pagos consume el comando de cobro y publica solo el resultado."
+    error_message = "HU18/HU19: solventa-pagos consume el comando de cobro y publica el resultado y el aviso de gracia vencida."
+  }
+
+  # HU19: Pagos valida el token del asesor u operador con el mismo secreto con que Identidad lo firma.
+  assert {
+    condition     = local.services["solventa-pagos"].secret_env_vars["ASESOR_JWT_SECRETO"] == local.services["solventa-identidad"].secret_env_vars["ASESOR_JWT_SECRETO"]
+    error_message = "HU19: solventa-pagos debe leer ASESOR_JWT_SECRETO del mismo secreto que solventa-identidad."
+  }
+
+  # HU19: del borde, Pagos publica solo la gestión de cobros fallidos; cobrar, tokenizar y consultar siguen internos.
+  assert {
+    condition = (
+      tolist(local.services["solventa-pagos"].edge.path_prefixes) == tolist(["/v1/pagos/cobros-fallidos"]) &&
+      alltrue([for p in ["/v1/pagos/cobros", "/v1/pagos/tokenizar", "/v1/pagos/transacciones"] : contains(local.services["solventa-pagos"].internal_path_prefixes, p)])
+    )
+    error_message = "HU19: solventa-pagos publica solo /v1/pagos/cobros-fallidos y declara internas /cobros, /tokenizar y /transacciones."
   }
 
   assert {

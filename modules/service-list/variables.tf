@@ -60,6 +60,8 @@ variable "config" {
         path_prefixes = list(string)
         high_volume   = optional(bool, false)
       }))
+      # Rutas del servicio que nunca se publican en el borde (V15), por ejemplo las que manejan tokens de pago.
+      internal_path_prefixes = optional(list(string), [])
     }))
   })
 
@@ -221,6 +223,33 @@ variable "config" {
       == length(flatten([for s in var.config.services : s.edge.path_prefixes if s.edge != null]))
     )
     error_message = "edge.node_port and edge.path_prefixes must be unique across services."
+  }
+
+  # V15: ningún borde publica una ruta interna: ni la misma, ni una debajo de ella, ni un prefijo más corto que la cubra
+  # (la ruta `ANY <prefijo>/{proxy+}` del API Gateway la alcanzaría).
+  validation {
+    condition = alltrue(flatten([
+      for s in var.config.services : [
+        for q in s.internal_path_prefixes : can(regex("^/[a-z0-9/_-]*[a-z0-9_-]$", q)) && alltrue(flatten([
+          for t in var.config.services : [
+            for p in(t.edge == null ? [] : t.edge.path_prefixes) : !(p == q || startswith(p, "${q}/") || startswith(q, "${p}/"))
+          ]
+        ]))
+      ]
+    ]))
+    error_message = format(
+      "An edge path_prefix publishes an internal path, or an internal_path_prefixes entry is invalid: \"%s\".",
+      join("\", \"", distinct(flatten([
+        for s in var.config.services : [
+          for q in s.internal_path_prefixes : q
+          if !can(regex("^/[a-z0-9/_-]*[a-z0-9_-]$", q)) || anytrue(flatten([
+            for t in var.config.services : [
+              for p in(t.edge == null ? [] : t.edge.path_prefixes) : p == q || startswith(p, "${q}/") || startswith(q, "${p}/")
+            ]
+          ]))
+        ]
+      ])))
+    )
   }
   # V10: topics con nombre válido (sin comodines), únicos, con particiones y retención positivas
   validation {
