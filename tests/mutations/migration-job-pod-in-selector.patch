@@ -1,0 +1,13 @@
+# rule: RULE migration-labels
+# tests: modules/service-workload
+--- a/modules/service-workload/main.tf
++++ b/modules/service-workload/main.tf
+@@ -188,7 +188,7 @@
+ 
+     template {
+       metadata {
+-        labels = local.migration_labels
++        labels = local.labels
+       }
+ 
+       spec {

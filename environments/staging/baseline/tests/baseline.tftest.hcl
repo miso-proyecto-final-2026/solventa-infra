@@ -339,3 +339,29 @@ run "events_create_topics_and_inject_the_brokers" {
     error_message = "HS2: the topics come from services.yaml."
   }
 }
+
+# HA03 (ADR-0014 del backend): en services.yaml solo Cotización escala por concurrencia y abre la subida.
+run "only_cotizacion_scales_by_requests_in_flight" {
+  command = plan
+
+  variables {
+    check_images_exist = false
+  }
+
+  assert {
+    condition = [
+      for name, s in module.service_list.services : name
+      if s.autoscaling.concurrent_requests_target != null || s.metrics_path != null
+    ] == ["solventa-backend"]
+    error_message = "RULE hpa-metric: only solventa-backend (Cotización) declares metrics_path and a concurrency target."
+  }
+
+  assert {
+    condition = alltrue([
+      for name, s in module.service_list.services :
+      s.autoscaling.scale_up.pods == 2 && s.autoscaling.scale_up.percent == null && s.autoscaling.scale_up.period_seconds == 60
+      if name != "solventa-backend"
+    ])
+    error_message = "RULE scale-up: the other services keep the default scale-up policy (2 pods every 60 s)."
+  }
+}

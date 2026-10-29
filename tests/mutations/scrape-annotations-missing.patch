@@ -1,0 +1,13 @@
+# rule: RULE scrape
+# tests: modules/service-workload
+--- a/modules/service-workload/deployment.tf
++++ b/modules/service-workload/deployment.tf
+@@ -18,7 +18,7 @@
+       metadata {
+         labels = local.labels
+         # Prometheus recoge el pod directo por su IP (sin pasar por el Service ni el NodePort del borde).
+-        annotations = var.service.metrics_path == null ? {} : {
++        annotations = true ? {} : {
+           "prometheus.io/scrape" = "true"
+           "prometheus.io/port"   = tostring(var.service.port)
+           "prometheus.io/path"   = var.service.metrics_path

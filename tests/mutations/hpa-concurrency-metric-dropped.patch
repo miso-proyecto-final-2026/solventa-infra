@@ -1,0 +1,13 @@
+# rule: RULE hpa-metric
+# tests: modules/service-workload
+--- a/modules/service-workload/deployment.tf
++++ b/modules/service-workload/deployment.tf
+@@ -199,7 +199,7 @@
+     # HA03 (ADR-0014 del backend): solicitudes en curso por pod, publicadas por Prometheus Adapter. Con varias
+     # métricas el HPA toma la recomendación más alta, así que la CPU queda de respaldo si la concurrencia falta.
+     dynamic "metric" {
+-      for_each = var.service.autoscaling.concurrent_requests_target == null ? [] : [1]
++      for_each = []
+ 
+       content {
+         type = "Pods"

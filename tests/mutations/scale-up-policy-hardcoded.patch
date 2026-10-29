@@ -1,0 +1,15 @@
+# rule: RULE scale-up
+# tests: modules/service-workload
+--- a/modules/service-workload/deployment.tf
++++ b/modules/service-workload/deployment.tf
+@@ -238,8 +238,8 @@
+ 
+         policy {
+           type           = "Pods"
+-          value          = var.service.autoscaling.scale_up.pods
+-          period_seconds = var.service.autoscaling.scale_up.period_seconds
++          value          = 2
++          period_seconds = 60
+         }
+ 
+         dynamic "policy" {

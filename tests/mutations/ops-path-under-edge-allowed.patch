@@ -1,0 +1,13 @@
+# rule: RULE ops-path-private
+# tests: modules/service-list
+--- a/modules/service-list/variables.tf
++++ b/modules/service-list/variables.tf
+@@ -261,7 +261,7 @@
+     condition = alltrue([
+       for s in var.config.services : s.edge == null ? true : alltrue([
+         for path in compact([s.metrics_path, s.health_path]) : alltrue([
+-          for p in s.edge.path_prefixes : path != p && !startswith(path, "${p}/")
++          for p in s.edge.path_prefixes : true
+         ])
+       ])
+     ])

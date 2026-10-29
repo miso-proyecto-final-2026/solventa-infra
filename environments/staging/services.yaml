@@ -30,7 +30,15 @@ services:
       requests: { cpu: 250m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 512Mi }
     replicas: { min: 2, max: 10 }
-    autoscaling: { cpu_target_percent: 70 }
+    # HA03 (ADR-0015 del backend): escala por solicitudes en curso por pod (CPU de respaldo). El objetivo es una
+    # estimación por la ley de Little (~833 solicitudes/s x decenas de ms en el servicio = decenas en curso en total);
+    # se calibró en 16 con el humo de la sesión de HA03 del 2026-10-25 (ADR-0015, Supuesto 3). La subida se abre solo
+    # aquí: sin estabilización (la ventana de 30 s del adaptador ya suaviza) y hasta el doble de pods, o 4 más, cada 15 s.
+    autoscaling:
+      cpu_target_percent: 70
+      concurrent_requests_target: 16
+      scale_up: { pods: 4, percent: 100, period_seconds: 15, stabilization_window_seconds: 0 }
+    metrics_path: /metrics             # solo Prometheus, dentro del clúster; nunca bajo `edge` (V13)
     owned_schemas: [public, cotizacion]
     database_env_vars: [DATABASE_URL, COTIZACION_DATABASE_URL]
     cache_env_var: REDIS_URL
