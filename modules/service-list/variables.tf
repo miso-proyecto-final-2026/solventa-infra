@@ -24,8 +24,22 @@ variable "config" {
         requests = object({ cpu = string, memory = string })
         limits   = object({ cpu = string, memory = string })
       })
-      replicas          = object({ min = number, max = number })
-      autoscaling       = optional(object({ cpu_target_percent = optional(number, 70) }), {})
+      replicas = object({ min = number, max = number })
+      # `concurrent_requests_target`: escala por solicitudes en curso por pod (HA03, ADR-0015 del backend), con la CPU
+      # como respaldo; requiere `metrics_path`. `scale_up`: política de subida del HPA; por defecto, 2 pods cada 60 s.
+      autoscaling = optional(object({
+        cpu_target_percent         = optional(number, 70)
+        concurrent_requests_target = optional(number)
+        scale_up = optional(object({
+          pods                         = optional(number, 2)
+          percent                      = optional(number)
+          period_seconds               = optional(number, 60)
+          stabilization_window_seconds = optional(number, 30)
+        }), {})
+      }), {})
+      # Ruta de métricas de Prometheus (p. ej. /metrics). Solo la consulta Prometheus dentro del clúster: no puede
+      # quedar bajo un prefijo de `edge` (V13).
+      metrics_path      = optional(string)
       owned_schemas     = optional(list(string), [])
       database_env_vars = optional(list(string), ["DATABASE_URL"])
       cache_env_var     = optional(string, "REDIS_URL")
@@ -46,6 +60,8 @@ variable "config" {
         path_prefixes = list(string)
         high_volume   = optional(bool, false)
       }))
+      # Rutas del servicio que nunca se publican en el borde (V15), por ejemplo las que manejan tokens de pago.
+      internal_path_prefixes = optional(list(string), [])
     }))
   })
 
@@ -208,6 +224,33 @@ variable "config" {
     )
     error_message = "edge.node_port and edge.path_prefixes must be unique across services."
   }
+
+  # V15: ningún borde publica una ruta interna: ni la misma, ni una debajo de ella, ni un prefijo más corto que la cubra
+  # (la ruta `ANY <prefijo>/{proxy+}` del API Gateway la alcanzaría).
+  validation {
+    condition = alltrue(flatten([
+      for s in var.config.services : [
+        for q in s.internal_path_prefixes : can(regex("^/[a-z0-9/_-]*[a-z0-9_-]$", q)) && alltrue(flatten([
+          for t in var.config.services : [
+            for p in(t.edge == null ? [] : t.edge.path_prefixes) : !(p == q || startswith(p, "${q}/") || startswith(q, "${p}/"))
+          ]
+        ]))
+      ]
+    ]))
+    error_message = format(
+      "An edge path_prefix publishes an internal path, or an internal_path_prefixes entry is invalid: \"%s\".",
+      join("\", \"", distinct(flatten([
+        for s in var.config.services : [
+          for q in s.internal_path_prefixes : q
+          if !can(regex("^/[a-z0-9/_-]*[a-z0-9_-]$", q)) || anytrue(flatten([
+            for t in var.config.services : [
+              for p in(t.edge == null ? [] : t.edge.path_prefixes) : p == q || startswith(p, "${q}/") || startswith(q, "${p}/")
+            ]
+          ]))
+        ]
+      ])))
+    )
+  }
   # V10: topics con nombre válido (sin comodines), únicos, con particiones y retención positivas
   validation {
     condition = (
@@ -240,6 +283,43 @@ variable "config" {
       length(concat(s.eventos.produce, s.eventos.consume)) == 0 || !contains(keys(s.settings), "KAFKA_BOOTSTRAP_SERVERS")
     ])
     error_message = "KAFKA_BOOTSTRAP_SERVERS is injected by the platform; do not define it in settings."
+  }
+
+  # V13: las rutas operativas (métricas y salud) nunca quedan bajo un prefijo público del borde
+  validation {
+    condition = alltrue([
+      for s in var.config.services : s.edge == null ? true : alltrue([
+        for path in compact([s.metrics_path, s.health_path]) : alltrue([
+          for p in s.edge.path_prefixes : path != p && !startswith(path, "${p}/")
+        ])
+      ])
+    ])
+    error_message = format(
+      "Service \"%s\": metrics_path and health_path must not fall under an edge path prefix (they would be public).",
+      join("\", \"", [
+        for s in var.config.services : s.name
+        if s.edge != null && anytrue([
+          for path in compact([s.metrics_path, s.health_path]) : anytrue([
+            for p in s.edge.path_prefixes : path == p || startswith(path, "${p}/")
+          ])
+        ])
+      ])
+    )
+  }
+
+  # V14: autoscaling por concurrencia con métricas declaradas y política de subida válida
+  validation {
+    condition = alltrue([
+      for s in var.config.services : (
+        (s.autoscaling.concurrent_requests_target == null || (s.metrics_path != null && s.autoscaling.concurrent_requests_target > 0))
+        && (s.metrics_path == null ? true : can(regex("^/[a-z0-9/_-]*[a-z0-9_-]$", s.metrics_path)))
+        && s.autoscaling.scale_up.pods >= 1
+        && (s.autoscaling.scale_up.percent == null ? true : s.autoscaling.scale_up.percent >= 1)
+        && s.autoscaling.scale_up.period_seconds >= 1 && s.autoscaling.scale_up.period_seconds <= 1800
+        && s.autoscaling.scale_up.stabilization_window_seconds >= 0 && s.autoscaling.scale_up.stabilization_window_seconds <= 3600
+      )
+    ])
+    error_message = "autoscaling.concurrent_requests_target requires metrics_path and must be > 0; metrics_path must be an absolute path; scale_up needs pods >= 1, percent >= 1, period 1-1800 s and stabilization 0-3600 s."
   }
 
 }

@@ -189,12 +189,12 @@ run "edge_follows_the_architecture_path" {
   }
 
   assert {
-    condition     = length(module.nlb[0].listener_arns) == 4
-    error_message = "RULE edge-services: solventa-backend, solventa-identidad, solventa-suscripcion and solventa-siniestros must be exposed through the NLB."
+    condition     = length(module.nlb[0].listener_arns) == 5
+    error_message = "RULE edge-services: solventa-backend, solventa-identidad, solventa-suscripcion, solventa-siniestros and solventa-pagos must be exposed through the NLB."
   }
 
   assert {
-    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad", "solventa-suscripcion", "solventa-siniestros"] : contains(keys(module.nlb[0].listener_arns), k)])
+    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad", "solventa-suscripcion", "solventa-siniestros", "solventa-pagos"] : contains(keys(module.nlb[0].listener_arns), k)])
     error_message = "RULE edge-wiring: each exposed service must have its own NLB listener."
   }
 }

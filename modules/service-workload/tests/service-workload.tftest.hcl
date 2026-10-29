@@ -53,8 +53,19 @@ run "deployment_follows_the_workload_contract" {
   }
 
   assert {
-    condition     = alltrue([for c in kubernetes_deployment_v1.this.spec[0].template[0].spec[0].topology_spread_constraint : c.when_unsatisfiable == "ScheduleAnyway"])
-    error_message = "RULE spread: topology spread must use ScheduleAnyway so the AZ drill can reschedule."
+    condition = length([
+      for c in kubernetes_deployment_v1.this.spec[0].template[0].spec[0].topology_spread_constraint : c
+      if c.topology_key == "topology.kubernetes.io/zone" && c.when_unsatisfiable == "DoNotSchedule" && c.node_taints_policy == "Honor"
+    ]) == 1
+    error_message = "RULE spread: the zone spread must be DoNotSchedule with node_taints_policy = Honor so replicas spread across AZs and the AZ drill can still reschedule (HA04)."
+  }
+
+  assert {
+    condition = length([
+      for c in kubernetes_deployment_v1.this.spec[0].template[0].spec[0].topology_spread_constraint : c
+      if c.topology_key == "kubernetes.io/hostname" && c.when_unsatisfiable == "ScheduleAnyway"
+    ]) == 1
+    error_message = "RULE spread: the node spread must stay ScheduleAnyway so scaling is not blocked by the node count (HA03)."
   }
 
   assert {
@@ -68,6 +79,27 @@ run "deployment_follows_the_workload_contract" {
   }
 
   assert {
+    condition     = length(kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].metric) == 1 && kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].metric[0].type == "Resource"
+    error_message = "RULE hpa-metric: without concurrent_requests_target the HPA scales by CPU only."
+  }
+
+  assert {
+    condition = (
+      kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].stabilization_window_seconds == 30
+      && length(kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].policy) == 1
+      && kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].policy[0].type == "Pods"
+      && kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].policy[0].value == 2
+      && kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].policy[0].period_seconds == 60
+    )
+    error_message = "RULE scale-up: the default scale-up policy stays at 2 pods every 60 s after 30 s of stabilization."
+  }
+
+  assert {
+    condition     = try(length(kubernetes_deployment_v1.this.spec[0].template[0].metadata[0].annotations), 0) == 0
+    error_message = "RULE scrape: without metrics_path the pod must not carry scrape annotations."
+  }
+
+  assert {
     condition     = kubernetes_pod_disruption_budget_v1.this.spec[0].min_available == "1"
     error_message = "The PDB must keep minAvailable: 1."
   }
@@ -75,6 +107,23 @@ run "deployment_follows_the_workload_contract" {
   assert {
     condition     = kubernetes_cron_job_v1.migrate[0].spec[0].suspend == true
     error_message = "The migration template CronJob must be suspended."
+  }
+
+  # Un pod de migración dentro del selector lo cuentan el HPA (métrica 0, sin request de CPU) y el PDB (HA03).
+  assert {
+    condition = !alltrue([
+      for k, v in kubernetes_deployment_v1.this.spec[0].selector[0].match_labels :
+      lookup(kubernetes_job_v1.migrate[0].spec[0].template[0].metadata[0].labels, k, null) == v
+    ])
+    error_message = "RULE migration-labels: the migration Job pods must not match the Deployment selector (HPA, PDB)."
+  }
+
+  assert {
+    condition = !alltrue([
+      for k, v in kubernetes_deployment_v1.this.spec[0].selector[0].match_labels :
+      lookup(kubernetes_cron_job_v1.migrate[0].spec[0].job_template[0].spec[0].template[0].metadata[0].labels, k, null) == v
+    ])
+    error_message = "RULE migration-labels: the CI migration pods (from the CronJob) must not match the Deployment selector."
   }
 
   assert {
@@ -236,5 +285,80 @@ run "service_without_edge_has_no_node_port" {
   assert {
     condition     = length(kubernetes_service_v1.edge) == 0
     error_message = "RULE edge-optional: a service without edge must not get a NodePort Service."
+  }
+}
+
+run "concurrency_target_scales_by_requests_in_flight" {
+  command = plan
+
+  variables {
+    service = {
+      image_tag   = "abc1234"
+      port        = 8000
+      health_path = "/health"
+      resources = {
+        requests = { cpu = "250m", memory = "256Mi" }
+        limits   = { cpu = "1000m", memory = "512Mi" }
+      }
+      replicas = { min = 2, max = 10 }
+      autoscaling = {
+        cpu_target_percent         = 70
+        concurrent_requests_target = 3
+        scale_up                   = { pods = 4, percent = 100, period_seconds = 15, stabilization_window_seconds = 0 }
+      }
+      metrics_path      = "/metrics"
+      database_env_vars = ["DATABASE_URL"]
+      cache_env_var     = "REDIS_URL"
+      migration_command = ["alembic", "upgrade", "head"]
+      edge              = { node_port = 30080, path_prefixes = ["/v1/cotizaciones"] }
+    }
+  }
+
+  assert {
+    condition = anytrue([
+      for m in kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].metric :
+      m.type == "Pods" && m.pods[0].metric[0].name == "http_requests_in_flight" && m.pods[0].target[0].type == "AverageValue" && m.pods[0].target[0].average_value == "3"
+    ])
+    error_message = "RULE hpa-metric: with concurrent_requests_target the HPA must scale by http_requests_in_flight (AverageValue per pod)."
+  }
+
+  assert {
+    condition = anytrue([
+      for m in kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].metric :
+      m.type == "Resource" && m.resource[0].name == "cpu" && m.resource[0].target[0].average_utilization == 70
+    ])
+    error_message = "RULE hpa-metric: CPU must stay as the fallback metric."
+  }
+
+  assert {
+    condition = (
+      kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].stabilization_window_seconds == 0
+      && kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].select_policy == "Max"
+      && anytrue([for p in kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].policy : p.type == "Pods" && p.value == 4 && p.period_seconds == 15])
+      && anytrue([for p in kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_up[0].policy : p.type == "Percent" && p.value == 100 && p.period_seconds == 15])
+    )
+    error_message = "RULE scale-up: the service's scale_up policy (Pods and Percent, Max) must reach the HPA."
+  }
+
+  assert {
+    condition = (
+      kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_down[0].stabilization_window_seconds == 300
+      && kubernetes_horizontal_pod_autoscaler_v2.this.spec[0].behavior[0].scale_down[0].policy[0].value == 1
+    )
+    error_message = "Scale-down stays conservative (1 pod every 60 s after 300 s) for every service."
+  }
+
+  assert {
+    condition = kubernetes_deployment_v1.this.spec[0].template[0].metadata[0].annotations == tomap({
+      "prometheus.io/scrape" = "true"
+      "prometheus.io/port"   = "8000"
+      "prometheus.io/path"   = "/metrics"
+    })
+    error_message = "RULE scrape: with metrics_path the pod must be annotated for Prometheus (scrape, port, path)."
+  }
+
+  assert {
+    condition     = kubernetes_service_v1.edge[0].spec[0].type == "NodePort" && length(kubernetes_service_v1.edge[0].spec[0].port) == 1 && kubernetes_service_v1.edge[0].spec[0].port[0].target_port == "http"
+    error_message = "RULE edge: the edge NodePort only exposes the http port; the metrics path is filtered by the API Gateway routes."
   }
 }

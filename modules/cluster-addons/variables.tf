@@ -59,3 +59,33 @@ variable "external_secrets_chart_version" {
   type        = string
   default     = "2.12.0"
 }
+
+variable "monitoring_namespace" {
+  description = "Namespace de Prometheus y Prometheus Adapter (métrica de concurrencia del HPA, HA03)."
+  type        = string
+  default     = "monitoring"
+}
+
+variable "prometheus_chart_version" {
+  description = "Versión del chart prometheus (prometheus-community)."
+  type        = string
+  default     = "29.36.2"
+}
+
+variable "prometheus_adapter_chart_version" {
+  description = "Versión del chart prometheus-adapter (prometheus-community)."
+  type        = string
+  default     = "5.3.0"
+}
+
+variable "metrics_scrape_interval" {
+  description = "Cada cuánto Prometheus recoge /metrics de los pods anotados."
+  type        = string
+  default     = "15s"
+}
+
+variable "concurrency_window" {
+  description = "Ventana del promedio de solicitudes en curso que ve el HPA (avg_over_time)."
+  type        = string
+  default     = "30s"
+}

@@ -1,0 +1,12 @@
+# rule: RULE spread
+# tests: modules/service-workload
+--- a/modules/service-workload/deployment.tf
++++ b/modules/service-workload/deployment.tf
+@@ -30,7 +30,6 @@
+           max_skew           = 1
+           topology_key       = "topology.kubernetes.io/zone"
+           when_unsatisfiable = "DoNotSchedule"
+-          node_taints_policy = "Honor"
+           label_selector {
+             match_labels = {
+               "app.kubernetes.io/name" = var.name
