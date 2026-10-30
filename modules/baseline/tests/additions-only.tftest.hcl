@@ -112,3 +112,26 @@ run "add_a_service" {
     error_message = "The db-access Job is expected to be replaced (new hash) when the service list changes."
   }
 }
+
+# La observabilidad (Grafana, Loki, Alloy) es opcional y no se instala si no se pide.
+run "observability_is_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(module.observability) == 0
+    error_message = "RULE observability-optional: without enable_observability nothing is installed."
+  }
+}
+
+run "observability_collects_workload_and_platform_logs_when_enabled" {
+  command = plan
+
+  variables {
+    enable_observability = true
+  }
+
+  assert {
+    condition     = length(module.observability) == 1 && module.observability[0].grafana_namespace == "monitoring"
+    error_message = "RULE observability-optional: enable_observability installs Grafana next to Prometheus."
+  }
+}

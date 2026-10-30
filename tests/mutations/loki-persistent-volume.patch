@@ -1,0 +1,13 @@
+# rule: RULE observability-minimal
+# tests: modules/observability
+--- a/modules/observability/main.tf
++++ b/modules/observability/main.tf
+@@ -128,7 +128,7 @@
+ 
+     singleBinary = {
+       replicas    = 1
+-      persistence = { enabled = false }
++      persistence = { enabled = true }
+       # Sin PVC el chart no monta /var/loki: se monta un disco efímero acotado.
+       extraVolumes      = [{ name = "storage", emptyDir = { sizeLimit = var.loki_storage_limit } }]
+       extraVolumeMounts = [{ name = "storage", mountPath = "/var/loki" }]
