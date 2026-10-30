@@ -5,6 +5,9 @@
 # También sirve para los documentos de póliza (HU20) con `existing_role_name`: el permiso de escritura se
 # adjunta al rol que el servicio ya asume (EKS admite una sola asociación de Pod Identity por cuenta de
 # servicio) y la retención puede ser indefinida (`retention_days = null`).
+#
+# Las pólizas firmadas (HU21) suman un segundo prefijo de escritura (`extra_write_prefixes`) y permiso de lectura
+# (`read_access`) sobre los mismos prefijos: el servicio relee el PDF para comprobar su hash y devolver la copia firmada.
 
 locals {
   # Derivado del nombre (conocido en el plan) para que las políticas se puedan comprobar sin aplicar.
@@ -13,6 +16,9 @@ locals {
   # Con `existing_role_name` no se crea rol ni asociación: la política se adjunta al rol dado.
   create_role      = var.existing_role_name == null
   writer_role_name = local.create_role ? aws_iam_role.writer[0].name : var.existing_role_name
+
+  # Solo los prefijos declarados: ni el bucket completo ni otros servicios. La lectura (si se pide) cubre los mismos.
+  object_arns = [for p in concat([var.prefix], var.extra_write_prefixes) : "${local.bucket_arn}/${p}*"]
 }
 
 resource "aws_s3_bucket" "this" {
@@ -108,7 +114,7 @@ resource "aws_s3_bucket_policy" "tls_only" {
 }
 
 # ---------------------------------------------------------------------------
-# Acceso del servicio: Pod Identity, solo PutObject bajo el prefijo de evidencias
+# Acceso del servicio: Pod Identity, PutObject bajo los prefijos de evidencias (y GetObject si `read_access`)
 # ---------------------------------------------------------------------------
 resource "aws_iam_role" "writer" {
   count = local.create_role ? 1 : 0
@@ -133,11 +139,23 @@ resource "aws_iam_role_policy" "writer" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:PutObject"]
-      Resource = "${local.bucket_arn}/${var.prefix}*"
-    }]
+    Statement = concat(
+      [{
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "${local.bucket_arn}/${var.prefix}*"
+      }],
+      length(var.extra_write_prefixes) == 0 ? [] : [{
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = [for p in var.extra_write_prefixes : "${local.bucket_arn}/${p}*"]
+      }],
+      var.read_access ? [{
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = local.object_arns
+      }] : [],
+    )
   })
 }
 

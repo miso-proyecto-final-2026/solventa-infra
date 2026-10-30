@@ -457,10 +457,13 @@ Notas:
   cosas: los objetos **no expiran** (`retention_days = null`: son documentos contractuales), las versiones antiguas se
   conservan 30 días (`noncurrent_days`) y **no crea rol ni asociación de Pod Identity**: EKS admite una sola asociación por
   cuenta de servicio y `solventa-suscripcion` ya tiene la de MSK, así que `existing_role_name` adjunta a ese rol una política
-  `write-polizas` con `s3:PutObject` solo bajo `polizas/`. Por eso el bucket se crea junto con el bus de eventos
+  `documentos-polizas` con `s3:PutObject` solo bajo `polizas/` y `firmadas/` y `s3:GetObject` sobre esos mismos dos prefijos
+  (HU21: el servicio relee el PDF para comprobar su hash, guarda la copia firmada y la entrega; sin `s3:ListBucket`, `s3:Delete*`
+  ni comodines). Se pide con `extra_write_prefixes` y `read_access`, que por defecto no conceden nada: el bucket de KYC sigue
+  siendo solo de escritura. Por eso el bucket se crea junto con el bus de eventos
   (`enable_events = true`; sin él, `polizas_bucket` es `null` y Suscripción solo puede usar la carpeta local en desarrollo).
   El baseline entrega `POLIZAS_BUCKET` y `AWS_DEFAULT_REGION`, y `services.yaml` permite a Suscripción publicar
-  `solventa.polizas.ciclovida` y suma `/v1/polizas` a su borde. No hay permiso de lectura: la descarga es de HU22. Como el de
+  `solventa.polizas.ciclovida` y suma `/v1/polizas` a su borde. La entrega al cliente es de HU22. Como el de
   KYC, se crea con `force_destroy` en staging. En producción la retención está por definir. **Migración del estado:** al
   añadir `count` al rol y a la asociación del módulo, bloques `moved` los trasladan en el estado; el plan del bucket de KYC
   no debe mostrar destrucciones.

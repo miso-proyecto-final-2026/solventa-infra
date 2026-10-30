@@ -1,0 +1,13 @@
+# rule: RULE least-privilege
+# tests: modules/evidence-bucket
+--- a/modules/evidence-bucket/main.tf
++++ b/modules/evidence-bucket/main.tf
+@@ -153,7 +153,7 @@
+       var.read_access ? [{
+         Effect   = "Allow"
+         Action   = ["s3:GetObject"]
+-        Resource = local.object_arns
++        Resource = "${local.bucket_arn}/*"
+       }] : [],
+     )
+   })
