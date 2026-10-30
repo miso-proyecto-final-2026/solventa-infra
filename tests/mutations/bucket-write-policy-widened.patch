@@ -2,12 +2,12 @@
 # tests: modules/evidence-bucket environments/staging/platform
 --- a/modules/evidence-bucket/main.tf
 +++ b/modules/evidence-bucket/main.tf
-@@ -136,7 +136,7 @@
-     Statement = [{
-       Effect   = "Allow"
-       Action   = ["s3:PutObject"]
--      Resource = "${local.bucket_arn}/${var.prefix}*"
-+      Resource = "${local.bucket_arn}/*"
-     }]
-   })
- }
+@@ -143,7 +143,7 @@
+       [{
+         Effect   = "Allow"
+         Action   = ["s3:PutObject"]
+-        Resource = "${local.bucket_arn}/${var.prefix}*"
++        Resource = "${local.bucket_arn}/*"
+       }],
+       length(var.extra_write_prefixes) == 0 ? [] : [{
+         Effect   = "Allow"

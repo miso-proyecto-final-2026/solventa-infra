@@ -66,6 +66,23 @@ variable "prefix" {
   default     = "kyc/"
 }
 
+variable "extra_write_prefixes" {
+  description = "Otros prefijos donde también se permite escribir (p. ej. firmadas/ para las pólizas firmadas, HU21). Cada uno termina en /."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for p in var.extra_write_prefixes : endswith(p, "/") && p != "/"])
+    error_message = "Each extra write prefix must end with / and name a folder (never the whole bucket)."
+  }
+}
+
+variable "read_access" {
+  description = "Concede también s3:GetObject sobre los prefijos de escritura. false = solo escribe (KYC); true para los documentos de póliza, que el servicio relee."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Etiquetas obligatorias (FR-005): Project, Environment, Repository, ManagedBy, Stage."
   type        = map(string)

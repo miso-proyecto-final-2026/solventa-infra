@@ -98,8 +98,8 @@ resource "terraform_data" "require_identidad" {
   }
 }
 
-# Documentos de póliza de MS Suscripción (HU20): segunda instancia del módulo. El permiso de escritura (solo PutObject bajo
-# polizas/) se adjunta al rol de MSK de Suscripción, porque EKS admite una sola asociación de Pod Identity por cuenta de
+# Documentos de póliza de MS Suscripción (HU20, HU21): segunda instancia del módulo. El permiso (PutObject bajo polizas/ y
+# firmadas/, GetObject sobre ambos) se adjunta al rol de MSK de Suscripción, porque EKS admite una sola asociación de Pod Identity por cuenta de
 # servicio. Los objetos no expiran (las pólizas son documentos contractuales) y las versiones antiguas se conservan 30 días.
 module "polizas_documentos" {
   count  = var.enable_events ? 1 : 0
@@ -110,9 +110,12 @@ module "polizas_documentos" {
   service_account    = "solventa-suscripcion"
   prefix             = "polizas/"
   existing_role_name = module.msk[0].client_role_names["solventa-suscripcion"]
-  policy_name        = "write-polizas"
-  retention_days     = null
-  noncurrent_days    = 30
+  policy_name        = "documentos-polizas"
+  # HU21: la copia firmada se guarda en firmadas/ y el servicio relee ambos PDF (comprueba el hash y los entrega).
+  extra_write_prefixes = ["firmadas/"]
+  read_access          = true
+  retention_days       = null
+  noncurrent_days      = 30
   # Staging bajo demanda: solo guarda documentos sintéticos y se destruye tras cada sesión.
   force_destroy = true
 
