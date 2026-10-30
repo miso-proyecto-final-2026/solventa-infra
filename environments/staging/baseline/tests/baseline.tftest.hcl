@@ -23,20 +23,22 @@ override_data {
       kyc_evidencias_bucket  = "solventa-staging-kyc-evidencias-123456789012"
       polizas_bucket         = "solventa-staging-polizas-123456789012"
       service_db_secret_names = {
-        "solventa-backend"       = "solventa/staging/solventa-backend/db"
-        "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
-        "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
-        "solventa-suscripcion"   = "solventa/staging/solventa-suscripcion/db"
-        "solventa-siniestros"    = "solventa/staging/solventa-siniestros/db"
-        "solventa-pagos"         = "solventa/staging/solventa-pagos/db"
+        "solventa-backend"        = "solventa/staging/solventa-backend/db"
+        "solventa-identidad"      = "solventa/staging/solventa-identidad/db"
+        "solventa-perfilamiento"  = "solventa/staging/solventa-perfilamiento/db"
+        "solventa-suscripcion"    = "solventa/staging/solventa-suscripcion/db"
+        "solventa-siniestros"     = "solventa/staging/solventa-siniestros/db"
+        "solventa-pagos"          = "solventa/staging/solventa-pagos/db"
+        "solventa-notificaciones" = "solventa/staging/solventa-notificaciones/db"
       }
       service_db_secret_versions = {
-        "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
-        "solventa-identidad"     = "66666666-7777-8888-9999-000000000000"
-        "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-        "solventa-suscripcion"   = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
-        "solventa-siniestros"    = "cccccccc-dddd-eeee-ffff-000000000000"
-        "solventa-pagos"         = "dddddddd-eeee-ffff-0000-111111111111"
+        "solventa-backend"        = "11111111-2222-3333-4444-555555555555"
+        "solventa-identidad"      = "66666666-7777-8888-9999-000000000000"
+        "solventa-perfilamiento"  = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        "solventa-suscripcion"    = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+        "solventa-siniestros"     = "cccccccc-dddd-eeee-ffff-000000000000"
+        "solventa-pagos"          = "dddddddd-eeee-ffff-0000-111111111111"
+        "solventa-notificaciones" = "eeeeeeee-ffff-0000-1111-222222222222"
       }
     }
   }
@@ -45,12 +47,13 @@ override_data {
 variables {
   state_bucket = "solventa-tfstate-123456789012-us-east-1"
   image_tags = {
-    "solventa-backend"       = "abc1234"
-    "solventa-identidad"     = "abc1234"
-    "solventa-perfilamiento" = "abc1234"
-    "solventa-suscripcion"   = "abc1234"
-    "solventa-siniestros"    = "abc1234"
-    "solventa-pagos"         = "abc1234"
+    "solventa-backend"        = "abc1234"
+    "solventa-identidad"      = "abc1234"
+    "solventa-perfilamiento"  = "abc1234"
+    "solventa-suscripcion"    = "abc1234"
+    "solventa-siniestros"     = "abc1234"
+    "solventa-pagos"          = "abc1234"
+    "solventa-notificaciones" = "abc1234"
   }
 }
 
@@ -94,6 +97,13 @@ run "plan_produces_the_full_workload_set" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-pagos"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-notificaciones"]
     values = {
       image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
     }
@@ -150,6 +160,17 @@ run "plan_produces_the_full_workload_set" {
   assert {
     condition     = output.edge_node_ports["solventa-pagos"] == 30084
     error_message = "RULE edge-nodeport: solventa-pagos must get its edge NodePort (30084) for the failed-payments console (HU19)."
+  }
+
+  # HU22: Notificaciones tiene su Deployment y su migración, y se publica por el borde (dispositivo y bandeja del push).
+  assert {
+    condition     = output.deployments["solventa-notificaciones"] == "solventa-notificaciones" && startswith(output.migration_jobs["solventa-notificaciones"], "solventa-notificaciones-migrate-")
+    error_message = "The baseline must create the solventa-notificaciones Deployment and its migration Job."
+  }
+
+  assert {
+    condition     = output.edge_node_ports["solventa-notificaciones"] == 30085
+    error_message = "RULE edge-nodeport: solventa-notificaciones must get its edge NodePort (30085)."
   }
 
   assert {
@@ -210,6 +231,13 @@ run "missing_image_fails_before_any_workload" {
     }
   }
 
+  override_data {
+    target = data.aws_ecr_images.service["solventa-notificaciones"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
   expect_failures = [terraform_data.image_check["solventa-backend"]]
 }
 
@@ -249,20 +277,22 @@ run "events_create_topics_and_inject_the_brokers" {
         polizas_bucket          = "solventa-staging-polizas-123456789012"
         kafka_bootstrap_brokers = "b-1.eventos.abc.kafka.us-east-1.amazonaws.com:9098,b-2.eventos.abc.kafka.us-east-1.amazonaws.com:9098"
         service_db_secret_names = {
-          "solventa-backend"       = "solventa/staging/solventa-backend/db"
-          "solventa-identidad"     = "solventa/staging/solventa-identidad/db"
-          "solventa-perfilamiento" = "solventa/staging/solventa-perfilamiento/db"
-          "solventa-suscripcion"   = "solventa/staging/solventa-suscripcion/db"
-          "solventa-siniestros"    = "solventa/staging/solventa-siniestros/db"
-          "solventa-pagos"         = "solventa/staging/solventa-pagos/db"
+          "solventa-backend"        = "solventa/staging/solventa-backend/db"
+          "solventa-identidad"      = "solventa/staging/solventa-identidad/db"
+          "solventa-perfilamiento"  = "solventa/staging/solventa-perfilamiento/db"
+          "solventa-suscripcion"    = "solventa/staging/solventa-suscripcion/db"
+          "solventa-siniestros"     = "solventa/staging/solventa-siniestros/db"
+          "solventa-pagos"          = "solventa/staging/solventa-pagos/db"
+          "solventa-notificaciones" = "solventa/staging/solventa-notificaciones/db"
         }
         service_db_secret_versions = {
-          "solventa-backend"       = "11111111-2222-3333-4444-555555555555"
-          "solventa-identidad"     = "66666666-7777-8888-9999-000000000000"
-          "solventa-perfilamiento" = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-          "solventa-suscripcion"   = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
-          "solventa-siniestros"    = "cccccccc-dddd-eeee-ffff-000000000000"
-          "solventa-pagos"         = "dddddddd-eeee-ffff-0000-111111111111"
+          "solventa-backend"        = "11111111-2222-3333-4444-555555555555"
+          "solventa-identidad"      = "66666666-7777-8888-9999-000000000000"
+          "solventa-perfilamiento"  = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+          "solventa-suscripcion"    = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+          "solventa-siniestros"     = "cccccccc-dddd-eeee-ffff-000000000000"
+          "solventa-pagos"          = "dddddddd-eeee-ffff-0000-111111111111"
+          "solventa-notificaciones" = "eeeeeeee-ffff-0000-1111-222222222222"
         }
       }
     }
@@ -295,6 +325,11 @@ run "events_create_topics_and_inject_the_brokers" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-pagos"]
+    values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-notificaciones"]
     values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
   }
 

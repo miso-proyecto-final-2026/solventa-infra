@@ -144,6 +144,10 @@ services:
       PERFILAMIENTO_SERVICE_KEY: solventa/staging/perfilamiento-api-key
       # Token del asesor (HU39, ADR-0020 del backend): la venta asistida lo valida con el mismo secreto de Identidad.
       ASESOR_JWT_SECRETO: solventa/staging/asesor-jwt-secreto
+      # HU22: clave con la que Notificaciones pide los enlaces de descarga del certificado (X-Service-Key), y clave con la
+      # que se firman esos enlaces. Nacen aleatorias en Secrets Manager, nunca en git; la primera la comparte Notificaciones.
+      SUSCRIPCION_SERVICE_KEYS: solventa/staging/suscripcion-service-key
+      CERTIFICADOS_CLAVE_ENLACES: solventa/staging/certificados-clave-enlaces
     # Publica la decisión (cobro y revisión asistida) y, tras la firma, `poliza_emitida` (HU20) a través de su cola de salida,
     # y consume el resultado del cobro (HU18) en el grupo `solventa-suscripcion.pagos`. El PDF de la póliza va al bucket
     # `polizas_documentos` (POLIZAS_BUCKET lo entrega baseline; el permiso de escritura va en el rol de MSK de este servicio).
@@ -154,9 +158,12 @@ services:
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
     # Borde público: CloudFront + WAF → API Gateway → NLB → este NodePort. El cliente (app móvil) lo llama con su token.
+    # HU22: `/v1/certificados/{token}` descarga el certificado con el enlace firmado del correo (sin sesión, pero con
+    # vencimiento y firma). `/v1/interno` (la emisión de esos enlaces, con clave de servicio) no sale por el borde.
     edge:
       node_port: 30082
-      path_prefixes: [/v1/suscripciones, /v1/polizas]
+      path_prefixes: [/v1/suscripciones, /v1/polizas, /v1/certificados]
+    internal_path_prefixes: [/v1/interno]
 
   - name: solventa-siniestros         # MS Siniestros (HU27): recibe eventos paramétricos y los publica en Kafka; esquema propio `siniestros`
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
@@ -241,3 +248,42 @@ services:
     # EC-S2.1). La validación V15 impide que algún borde las publique, aunque sea con un prefijo más corto.
     internal_path_prefixes: [/v1/pagos/cobros, /v1/pagos/tokenizar, /v1/pagos/transacciones]
 
+  - name: solventa-notificaciones     # MS Notificaciones (HU22): correo (SES) y push simulado al emitirse la póliza; esquema propio `notificaciones`
+    image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    replicas: { min: 2, max: 4 }
+    autoscaling: { cpu_target_percent: 70 }
+    owned_schemas: [notificaciones]
+    database_env_vars: [DATABASE_URL]  # el servicio acepta DATABASE_URL como alternativa a NOTIFICACIONES_DATABASE_URL
+    cache_env_var: ""                  # Notificaciones no usa Redis
+    settings:
+      # REST síncrono hacia los vecinos (ADR-0002): los Service son ClusterIP en el puerto 80.
+      IDENTIDAD_URL: http://solventa-identidad
+      SUSCRIPCION_URL: http://solventa-suscripcion
+      # La firma de MSK (SASL/IAM) necesita la región; Pod Identity no la entrega.
+      AWS_REGION: us-east-1
+      # URL_PUBLICA (el borde, para los enlaces del correo), CORREO_PROVEEDOR y CORREO_REMITENTE los entrega baseline desde
+      # la plataforma: sin remitente verificado en SES el correo es el simulado.
+    secret_env_vars:
+      # La misma clave que Identidad acepta en SERVICE_API_KEYS: valida la sesión del cliente y entrega su correo.
+      IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
+      # La que Suscripción acepta en SUSCRIPCION_SERVICE_KEYS: pide los enlaces de descarga del certificado.
+      SUSCRIPCION_SERVICE_KEY: solventa/staging/suscripcion-service-key
+      # Token del operador (ADR-0008) con el que se ven los envíos fallidos; el mismo secreto con el que Identidad lo firma.
+      ASESOR_JWT_SECRETO: solventa/staging/asesor-jwt-secreto
+    # Consume `poliza_emitida` en el grupo `solventa-notificaciones.polizas` (debe empezar por el nombre del servicio).
+    # Reentrega los mensajes que no puede procesar a `solventa.polizas.ciclovida.dlq`. No publica eventos.
+    eventos:
+      consume: [solventa.polizas.ciclovida]
+    migration_command: [alembic, upgrade, head]
+    run_as_non_root: false
+    deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
+    # Borde público: registro del dispositivo y bandeja del push (sesión del cliente); la lista de envíos fallidos exige el
+    # JWT de un operador. CloudFront + WAF → API Gateway → NLB → este NodePort.
+    edge:
+      node_port: 30085
+      path_prefixes: [/v1/dispositivos, /v1/notificaciones]
