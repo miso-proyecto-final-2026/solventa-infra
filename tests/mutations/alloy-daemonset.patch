@@ -1,0 +1,13 @@
+# rule: RULE observability-minimal
+# tests: modules/observability
+--- a/modules/observability/main.tf
++++ b/modules/observability/main.tf
+@@ -167,7 +167,7 @@
+ 
+   values = [yamlencode({
+     controller = {
+-      type     = "deployment"
++      type     = "daemonset"
+       replicas = 1
+     }
+ 

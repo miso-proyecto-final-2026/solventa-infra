@@ -101,6 +101,12 @@ variable "metrics_server_args" {
   default     = []
 }
 
+variable "enable_observability" {
+  description = "Instala Grafana, Loki y Alloy (logs y métricas en un panel) junto al Prometheus del HPA. Apagado por defecto."
+  type        = bool
+  default     = false
+}
+
 variable "staging_namespace" {
   description = "Namespace de las cargas."
   type        = string

@@ -39,7 +39,7 @@ Tres raíces de Terraform con ciclos de vida distintos:
 |---|---|---|
 | `bootstrap/` | Bucket S3 de estado (bloqueo nativo), proveedor OIDC de GitHub y roles de CI | Una vez; **sobrevive al teardown**, no cuesta |
 | `environments/staging/platform/` | VPC (2 AZ), EKS `solventa-staging` (3 × `t3.medium`), ECR, RDS PostgreSQL 16 Multi-AZ, ElastiCache Redis con failover, secretos | Bajo demanda |
-| `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Prometheus y Prometheus Adapter (HPA por concurrencia), Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
+| `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Prometheus y Prometheus Adapter (HPA por concurrencia), Grafana + Loki + Alloy (logs y métricas), Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
 
 - La lista de servicios vive **una sola vez** en `environments/staging/services.yaml` (contrato C1).
 - `modules/baseline` es la composición compartida: la usan `environments/staging/baseline` (AWS) y
@@ -426,6 +426,36 @@ pod (/metrics, gauge http_requests_in_flight) --scrape 15 s--> Prometheus --avg_
 
 Comprobar la cadena: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/staging/pods/*/http_requests_in_flight"`
 y `kubectl -n staging describe hpa solventa-backend` (dos métricas).
+
+## Logs y métricas en Grafana
+
+Para ver los logs de todos los servicios y las métricas en un solo panel, con la menor infraestructura posible
+(`modules/observability`, encendido en staging con `enable_observability = true`):
+
+```text
+pods (stdout) --API de Kubernetes--> Alloy (1 pod) --> Loki (1 pod, disco efímero) --> Grafana <-- Prometheus (el del HPA)
+```
+
+- **Tres pods nuevos** en el namespace `monitoring` (≈ 200 mCPU y ≈ 0,5 GiB pedidos) y **nada fuera del clúster**: sin bucket,
+  sin roles de AWS, sin PVC ni LoadBalancer. El teardown no necesita pasos extra.
+- **Alloy es un solo pod**, no un DaemonSet por nodo: lee los logs por la API de Kubernetes. Si se reinicia puede faltar un tramo corto.
+- **Loki guarda 48 h en un `emptyDir`** acotado a 3 GiB. **Si el pod de Loki se reinicia, los logs se pierden**: es aceptable en
+  staging y es lo que evita el costo. Para conservarlos habría que darle un bucket de S3 (cambio futuro).
+- **Grafana no persiste nada**: las fuentes de datos (Loki y el Prometheus del HPA) y los dos dashboards se aprovisionan desde el módulo
+  (`modules/observability/dashboards/`). No se publica: se abre con un port-forward.
+
+Abrirlo (con staging encendido y el kubeconfig configurado):
+
+```sh
+scripts/grafana.sh            # imprime usuario y contraseña y abre http://localhost:3000
+```
+
+En la carpeta **Solventa**: *Logs de servicios* (volumen, errores y los logs con filtro por servicio, texto libre y
+`trace_id` / `correlation_id`) y *Servicios (métricas)* (pods recogidos y solicitudes en curso). Solo Pagos y Suscripción emiten hoy
+logs JSON con `trace_id`; los demás servicios aparecen como texto plano hasta que se estandarice su formato. Las etiquetas de Loki son
+solo `namespace`, `service`, `pod`, `container` y `level` (más etiquetas multiplicarían los flujos): lo demás se busca dentro de la línea.
+
+Pruebas: `terraform -chdir=modules/observability test`. Las mutaciones `loki-persistent-volume` y `alloy-daemonset` protegen la regla de costo.
 
 ## Añadir un microservicio
 

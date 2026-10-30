@@ -106,6 +106,7 @@ module "baseline" {
   service_db_secret_names    = local.platform.service_db_secret_names
   service_db_secret_versions = local.platform.service_db_secret_versions
   metrics_server_args        = var.metrics_server_args
+  enable_observability       = var.enable_observability
 
   # Ninguna carga cambia antes de comprobar que las imágenes existen.
   depends_on = [terraform_data.image_check]

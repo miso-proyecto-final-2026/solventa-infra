@@ -1,0 +1,79 @@
+{
+  "title": "Servicios (métricas)",
+  "uid": "solventa-servicios",
+  "tags": [
+    "solventa",
+    "metricas"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "description": "Métricas que Prometheus recoge de los pods anotados con prometheus.io/scrape. Hoy solo Cotización expone /metrics.",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Pods recogidos por Prometheus",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(up{job=\"kubernetes-pods\"} == 1)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Solicitudes en curso por pod",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 18,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "http_requests_in_flight",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    }
+  ]
+}
