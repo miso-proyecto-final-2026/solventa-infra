@@ -77,6 +77,12 @@ variable "extra_write_prefixes" {
   }
 }
 
+variable "list_access" {
+  description = "Concede s3:ListBucket sobre este bucket (solo el bucket, nunca otros). Sin él, S3 responde AccessDenied (403) y no NoSuchKey (404) al leer una clave que no existe, y el servicio no distingue «aún no hay copia» de «sin permiso». false por defecto (KYC); true para los documentos de póliza, cuyo servicio relee y genera bajo demanda."
+  type        = bool
+  default     = false
+}
+
 variable "read_access" {
   description = "Concede también s3:GetObject sobre los prefijos de escritura. false = solo escribe (KYC); true para los documentos de póliza, que el servicio relee."
   type        = bool

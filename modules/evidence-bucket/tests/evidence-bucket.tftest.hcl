@@ -245,3 +245,40 @@ run "retention_days_must_be_null_or_positive" {
 
   expect_failures = [var.retention_days]
 }
+
+run "listing_is_opt_in_and_limited_to_the_bucket_itself" {
+  command = plan
+
+  variables {
+    bucket_name          = "solventa-staging-polizas-123456789012"
+    prefix               = "polizas/"
+    extra_write_prefixes = ["certificados/"]
+    read_access          = true
+    list_access          = true
+    existing_role_name   = "solventa-staging-solventa-suscripcion-eventos"
+    policy_name          = "documentos-polizas"
+  }
+
+  # Sin ListBucket, leer una clave inexistente da 403 y el servicio no distingue «no hay copia» de «sin permiso».
+  assert {
+    condition = toset(flatten([
+      for st in jsondecode(aws_iam_role_policy.writer.policy).Statement :
+      [for r in flatten([st.Resource]) : r if contains(tolist(st.Action), "s3:ListBucket")]
+    ])) == toset(["arn:aws:s3:::solventa-staging-polizas-123456789012"])
+    error_message = "RULE least-privilege: listing must be granted on this bucket only, never a wildcard or object path."
+  }
+
+  assert {
+    condition     = toset(flatten([for st in jsondecode(aws_iam_role_policy.writer.policy).Statement : [for a in tolist(st.Action) : a]])) == toset(["s3:PutObject", "s3:GetObject", "s3:ListBucket"])
+    error_message = "RULE least-privilege: with list_access the role may only Put, Get and List (no delete, no wildcard)."
+  }
+}
+
+run "listing_is_never_granted_by_default" {
+  command = plan
+
+  assert {
+    condition     = !can(regex("ListBucket", aws_iam_role_policy.writer.policy))
+    error_message = "RULE least-privilege: list_access defaults to false, so the KYC role never lists."
+  }
+}
