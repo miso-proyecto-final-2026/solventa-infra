@@ -272,6 +272,8 @@ module "cloudfront" {
 
   name              = local.cluster_name
   origin_domain     = module.api_gateway[0].domain_name
+  enable_web        = true
+  web_origin_domain = module.web_hosting[0].regional_domain_name
   allowed_countries = var.edge_allowed_countries
 
   rate_limit_per_5min = var.edge_rate_limit_per_5min
@@ -281,6 +283,17 @@ module "cloudfront" {
     for name, s in local.edge_services : "^(${join("|", s.edge.path_prefixes)})(/.*)?$" if s.edge.high_volume
   ])
   high_volume_rate_limit_per_5min = var.edge_high_volume_rate_limit_per_5min
+
+  tags = local.tags
+}
+
+# Consola web (HU39): archivos estáticos detrás de la misma distribución, con su WAF. El bucket solo lo lee CloudFront.
+module "web_hosting" {
+  source = "../../../modules/web-hosting"
+  count  = local.edge_enabled ? 1 : 0
+
+  bucket_name      = "solventa-${var.name}-web-${local.account_id}"
+  distribution_arn = module.cloudfront[0].distribution_arn
 
   tags = local.tags
 }

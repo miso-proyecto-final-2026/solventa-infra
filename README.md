@@ -323,6 +323,8 @@ En Postman: `pagos_url` = `http://localhost:8005` y la clave como valor actual d
 
 ## Borde público
 
+**Consola web (HU39).** La misma distribución sirve `solventa-web`: `/v1/*` sigue yendo al API Gateway sin cambios (móvil y proveedores), `/api/<servicio>/v1/*` va al API Gateway sin el prefijo y el resto sale del bucket privado `solventa-staging-web-<cuenta>` (módulo `web-hosting`), que solo lee CloudFront. Las rutas sin idioma redirigen a `/es-CO/`. Para desplegar, en `solventa-web`: crear el environment `staging`, definir las variables `AWS_WEB_DEPLOY_ROLE_ARN` (salida `web_deploy_role_arn` de `bootstrap`), `WEB_BUCKET` y `WEB_DISTRIBUTION_ID` (salidas de `platform`), y comentar `cicd/deploy-staging` en un PR.
+
 Implementa la ruta de entrada del documento de arquitectura: **cliente → CloudFront (TLS) + WAF → API Gateway → NLB interno → NodePort de cada servicio**. Se crea en la etapa `platform` (variable `enable_edge`, activa por defecto) y lo crea todo Terraform: el clúster no crea balanceadores, así que el destroy no deja ninguno huérfano.
 
 | Módulo | Qué crea |

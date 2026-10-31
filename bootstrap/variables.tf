@@ -21,6 +21,7 @@ variable "github_ids" {
     repositories = {
       "miso-proyecto-final-2026/solventa-infra"   = "1412530280"
       "miso-proyecto-final-2026/solventa-backend" = "1412524586"
+      "miso-proyecto-final-2026/solventa-web"     = "1412528255"
     }
   }
 }
@@ -41,4 +42,10 @@ variable "cluster_name" {
   description = "Nombre del clúster EKS al que apuntan las políticas de los roles."
   type        = string
   default     = "solventa-staging"
+}
+
+variable "web_repository" {
+  description = "Repositorio GitHub (owner/repo) de la consola web: recibe su rol de despliegue (HU39)."
+  type        = string
+  default     = "miso-proyecto-final-2026/solventa-web"
 }

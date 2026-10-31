@@ -355,6 +355,47 @@ resource "aws_wafv2_web_acl" "this" {
   }
 }
 
+locals {
+  # Con la consola web (HU39), el origen por defecto es el bucket y la API queda en /v1/* y /api/*.
+  web_enabled = var.enable_web
+
+  # Políticas administradas de AWS. La API no se cachea y reenvía todo salvo el Host.
+  cache_disabled                = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  cache_optimized               = "658327ea-f89d-4aba-9e8a-1ab1e5a1ee5a"
+  all_viewer_except_host_header = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+  all_methods                   = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+}
+
+resource "aws_cloudfront_origin_access_control" "web" {
+  count = local.web_enabled ? 1 : 0
+
+  name                              = "${var.name}-web"
+  description                       = "CloudFront firma las lecturas del bucket de la consola web"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_function" "api_prefix" {
+  count = local.web_enabled ? 1 : 0
+
+  name    = "${var.name}-api-prefix"
+  comment = "Quita /api/<servicio> de las llamadas de la consola web"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = file("${path.module}/functions/api-prefix.js")
+}
+
+resource "aws_cloudfront_function" "web_spa" {
+  count = local.web_enabled ? 1 : 0
+
+  name    = "${var.name}-web-spa"
+  comment = "Sirve el index.html de cada idioma en las rutas de la consola web"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = file("${path.module}/functions/web-spa.js")
+}
+
 resource "aws_cloudfront_distribution" "this" {
   enabled         = true
   comment         = "${var.name}: borde publico de Solventa"
@@ -375,15 +416,71 @@ resource "aws_cloudfront_distribution" "this" {
     }
   }
 
-  # La API no se cachea (CachingDisabled) y reenvía todo salvo el Host (AllViewerExceptHostHeader).
+  dynamic "origin" {
+    for_each = local.web_enabled ? [1] : []
+
+    content {
+      origin_id                = "web"
+      domain_name              = var.web_origin_domain
+      origin_access_control_id = aws_cloudfront_origin_access_control.web[0].id
+    }
+  }
+
+  # Sin consola web, todo va a la API. Con ella, el resto de rutas son archivos estáticos cacheables.
   default_cache_behavior {
-    target_origin_id         = "api-gateway"
+    target_origin_id         = local.web_enabled ? "web" : "api-gateway"
     viewer_protocol_policy   = "redirect-to-https"
-    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    allowed_methods          = local.web_enabled ? ["GET", "HEAD"] : local.all_methods
     cached_methods           = ["GET", "HEAD"]
     compress                 = true
-    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+    cache_policy_id          = local.web_enabled ? local.cache_optimized : local.cache_disabled
+    origin_request_policy_id = local.web_enabled ? null : local.all_viewer_except_host_header
+
+    dynamic "function_association" {
+      for_each = local.web_enabled ? [1] : []
+
+      content {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.web_spa[0].arn
+      }
+    }
+  }
+
+  # La app móvil y los proveedores siguen llamando a /v1/* tal cual.
+  dynamic "ordered_cache_behavior" {
+    for_each = local.web_enabled ? [1] : []
+
+    content {
+      path_pattern             = "/v1/*"
+      target_origin_id         = "api-gateway"
+      viewer_protocol_policy   = "redirect-to-https"
+      allowed_methods          = local.all_methods
+      cached_methods           = ["GET", "HEAD"]
+      compress                 = true
+      cache_policy_id          = local.cache_disabled
+      origin_request_policy_id = local.all_viewer_except_host_header
+    }
+  }
+
+  # La consola web llama a /api/<servicio>/v1/*: la función deja solo /v1/*.
+  dynamic "ordered_cache_behavior" {
+    for_each = local.web_enabled ? [1] : []
+
+    content {
+      path_pattern             = "/api/*"
+      target_origin_id         = "api-gateway"
+      viewer_protocol_policy   = "redirect-to-https"
+      allowed_methods          = local.all_methods
+      cached_methods           = ["GET", "HEAD"]
+      compress                 = true
+      cache_policy_id          = local.cache_disabled
+      origin_request_policy_id = local.all_viewer_except_host_header
+
+      function_association {
+        event_type   = "viewer-request"
+        function_arn = aws_cloudfront_function.api_prefix[0].arn
+      }
+    }
   }
 
   restrictions {

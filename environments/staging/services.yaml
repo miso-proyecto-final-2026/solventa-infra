@@ -64,7 +64,8 @@ services:
     # Borde público: CloudFront + WAF → API Gateway → NLB → este NodePort.
     edge:
       node_port: 30080
-      path_prefixes: [/v1/cotizaciones]
+      # /v1/asesor y /v1/productos: la cotización asistida de la consola web (HU38, HU39). Exigen el JWT del asesor, salvo el catálogo.
+      path_prefixes: [/v1/cotizaciones, /v1/asesor, /v1/productos]
 
   - name: solventa-identidad          # MS Identidad (ADR-0001): clientes, sesión y consentimiento; esquema propio `identidad`
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
@@ -86,7 +87,8 @@ services:
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
     edge:
       node_port: 30081
-      path_prefixes: [/v1/clientes]
+      # /v1/sesiones-internas: el inicio de sesión del personal en la consola web (HU39).
+      path_prefixes: [/v1/clientes, /v1/sesiones-internas]
 
   - name: solventa-perfilamiento      # MS Perfilamiento (HU23): enriquece el perfil de riesgo; esquema propio `perfilamiento`
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
@@ -140,6 +142,8 @@ services:
       IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
       # La que Perfilamiento acepta en PERFILAMIENTO_API_KEYS (X-Service-Key).
       PERFILAMIENTO_SERVICE_KEY: solventa/staging/perfilamiento-api-key
+      # Token del asesor (HU39, ADR-0020 del backend): la venta asistida lo valida con el mismo secreto de Identidad.
+      ASESOR_JWT_SECRETO: solventa/staging/asesor-jwt-secreto
     # Publica la decisión (cobro y revisión asistida) y, tras la firma, `poliza_emitida` (HU20) a través de su cola de salida,
     # y consume el resultado del cobro (HU18) en el grupo `solventa-suscripcion.pagos`. El PDF de la póliza va al bucket
     # `polizas_documentos` (POLIZAS_BUCKET lo entrega baseline; el permiso de escritura va en el rol de MSK de este servicio).

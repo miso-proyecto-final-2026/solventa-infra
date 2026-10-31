@@ -13,6 +13,11 @@ output "infra_apply_role_arn" {
   value       = module.ci_identities.infra_apply_role_arn
 }
 
+output "web_deploy_role_arn" {
+  description = "Rol de despliegue de la consola web (variable AWS_WEB_DEPLOY_ROLE_ARN en solventa-web, HU39)."
+  value       = module.ci_identities.web_deploy_role_arn
+}
+
 output "service_deploy_role_arns" {
   description = "Mapa servicio => rol de despliegue (variable AWS_ROLE_ARN en el repo del servicio)."
   value       = module.ci_identities.service_deploy_role_arns

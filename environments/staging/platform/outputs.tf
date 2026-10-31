@@ -85,6 +85,16 @@ output "polizas_bucket" {
   value       = var.enable_events ? module.polizas_documentos[0].bucket_name : null
 }
 
+output "web_bucket_name" {
+  description = "Bucket de la consola web (variable WEB_BUCKET en solventa-web); null si el borde está desactivado."
+  value       = local.edge_enabled ? module.web_hosting[0].bucket_name : null
+}
+
+output "cloudfront_distribution_id" {
+  description = "Distribución del borde (variable WEB_DISTRIBUTION_ID en solventa-web); null si el borde está desactivado."
+  value       = local.edge_enabled ? module.cloudfront[0].distribution_id : null
+}
+
 output "public_url" {
   description = "URL pública del borde (CloudFront); null si el borde está desactivado."
   value       = local.edge_enabled ? module.cloudfront[0].url : null

@@ -9,6 +9,12 @@ variable "deploy_repositories" {
   type        = map(string)
 }
 
+variable "web_deploy_repository" {
+  description = "Repositorio GitHub (owner/repo) de la consola web; recibe un rol que solo publica en su bucket (HU39). Nulo: sin rol."
+  type        = string
+  default     = null
+}
+
 variable "github_ids" {
   description = <<-EOT
     IDs numéricos de GitHub para el subject OIDC inmutable (`repo:<owner>@<id-org>/<repo>@<id-repo>:...`), que GitHub
