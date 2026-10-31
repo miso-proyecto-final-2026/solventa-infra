@@ -112,7 +112,8 @@ module "polizas_documentos" {
   existing_role_name = module.msk[0].client_role_names["solventa-suscripcion"]
   policy_name        = "documentos-polizas"
   # HU21: la copia firmada se guarda en firmadas/ y el servicio relee ambos PDF (comprueba el hash y los entrega).
-  extra_write_prefixes = ["firmadas/"]
+  # HU22: el certificado de cobertura se guarda en certificados/ y se entrega al titular o por un enlace firmado.
+  extra_write_prefixes = ["firmadas/", "certificados/"]
   read_access          = true
   retention_days       = null
   noncurrent_days      = 30
@@ -296,4 +297,17 @@ module "web_hosting" {
   distribution_arn = module.cloudfront[0].distribution_arn
 
   tags = local.tags
+}
+
+# Remitente del correo de MS Notificaciones (HU22): identidad de Amazon SES y permiso mínimo para enviar con ella. El permiso
+# se adjunta al rol de MSK del servicio (EKS admite una sola asociación de Pod Identity por cuenta de servicio). Sin
+# correo_remitente no se crea nada y el servicio usa el correo simulado.
+module "ses_notificaciones" {
+  count  = var.enable_events && var.correo_remitente != null ? 1 : 0
+  source = "../../../modules/ses-sender"
+
+  sender_email = var.correo_remitente
+  role_name    = module.msk[0].client_role_names["solventa-notificaciones"]
+  region       = var.region
+  account_id   = local.account_id
 }

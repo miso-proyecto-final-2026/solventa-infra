@@ -187,3 +187,14 @@ variable "events_kafka_version" {
   type        = string
   default     = "3.9.x"
 }
+
+variable "correo_remitente" {
+  description = "Dirección desde la que MS Notificaciones envía el correo (HU22). Se crea su identidad en Amazon SES y AWS manda un enlace de confirmación a esa dirección: alguien debe abrirlo. Con la cuenta en sandbox, SES solo envía a destinatarios también verificados. null = sin identidad: el correo queda simulado. Requiere enable_events."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.correo_remitente == null || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.correo_remitente))
+    error_message = "correo_remitente must be null or a valid email address."
+  }
+}

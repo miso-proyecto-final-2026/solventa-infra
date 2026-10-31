@@ -119,3 +119,8 @@ output "kafka_cluster_arn" {
   description = "ARN del clúster MSK; null si enable_events es false."
   value       = one(module.msk[*].cluster_arn)
 }
+
+output "correo_remitente" {
+  description = "Remitente del correo de MS Notificaciones (HU22), o null si no hay identidad de SES y el correo es simulado."
+  value       = one(module.ses_notificaciones[*].sender_email)
+}

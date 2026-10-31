@@ -1,0 +1,13 @@
+# rule: RULE least-privilege
+# tests: modules/ses-sender
+--- a/modules/ses-sender/main.tf
++++ b/modules/ses-sender/main.tf
+@@ -24,7 +24,7 @@
+     Statement = [{
+       Effect   = "Allow"
+       Action   = ["ses:SendEmail"]
+-      Resource = local.identity_arn
++      Resource = "*"
+     }]
+   })
+ }
