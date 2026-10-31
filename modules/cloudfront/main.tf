@@ -361,7 +361,7 @@ locals {
 
   # Políticas administradas de AWS. La API no se cachea y reenvía todo salvo el Host.
   cache_disabled                = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-  cache_optimized               = "658327ea-f89d-4aba-9e8a-1ab1e5a1ee5a"
+  cache_optimized               = "658327ea-f89d-4fab-a63d-7e88639e58f6"
   all_viewer_except_host_header = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
   all_methods                   = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
 }
