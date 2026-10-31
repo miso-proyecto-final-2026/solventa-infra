@@ -8,6 +8,11 @@
 locals {
   # Derivado de la región, la cuenta y la dirección (conocidos en el plan) para poder comprobar la política sin aplicar.
   identity_arn = "arn:aws:ses:${var.region}:${var.account_id}:identity/${var.sender_email}"
+
+  # En sandbox, SES autoriza el envío contra la identidad del remitente Y la de cada destinatario: con solo la primera,
+  # el envío responde AccessDenied. Se permiten las identidades de esta cuenta (nunca "*"), pero el remitente queda fijo
+  # con la condición ses:FromAddress, de modo que el rol no puede enviar en nombre de otra dirección.
+  identities_arn = "arn:aws:ses:${var.region}:${var.account_id}:identity/*"
 }
 
 resource "aws_ses_email_identity" "this" {
@@ -23,7 +28,10 @@ resource "aws_iam_role_policy" "send" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["ses:SendEmail"]
-      Resource = local.identity_arn
+      Resource = local.identities_arn
+      Condition = {
+        StringEquals = { "ses:FromAddress" = var.sender_email }
+      }
     }]
   })
 }

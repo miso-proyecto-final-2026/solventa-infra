@@ -9,7 +9,7 @@ variables {
   account_id   = "123456789012"
 }
 
-run "policy_allows_only_send_email_on_the_sender_identity" {
+run "policy_allows_only_send_email_from_the_sender_address" {
   command = plan
 
   assert {
@@ -17,14 +17,15 @@ run "policy_allows_only_send_email_on_the_sender_identity" {
     error_message = "RULE least-privilege: the role may only ses:SendEmail."
   }
 
+  # En sandbox SES también autoriza la identidad del destinatario: se permiten las identidades de la cuenta, no "*".
   assert {
-    condition     = one(jsondecode(aws_iam_role_policy.send.policy).Statement).Resource == "arn:aws:ses:us-east-1:123456789012:identity/notificaciones@solventa.example"
-    error_message = "RULE least-privilege: sending must be limited to the sender identity, never a wildcard."
+    condition     = one(jsondecode(aws_iam_role_policy.send.policy).Statement).Resource == "arn:aws:ses:us-east-1:123456789012:identity/*"
+    error_message = "RULE least-privilege: sending must be limited to the SES identities of this account, never a bare wildcard."
   }
 
   assert {
-    condition     = !can(regex("\\*", aws_iam_role_policy.send.policy))
-    error_message = "RULE least-privilege: the SES policy must not contain wildcards."
+    condition     = one(jsondecode(aws_iam_role_policy.send.policy).Statement).Condition.StringEquals["ses:FromAddress"] == "notificaciones@solventa.example"
+    error_message = "RULE least-privilege: the From address must be pinned to the sender."
   }
 }
 
