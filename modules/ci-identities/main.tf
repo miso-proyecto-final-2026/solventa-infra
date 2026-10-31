@@ -16,7 +16,7 @@ locals {
   # GitHub emite el subject inmutable con los IDs de la organización y del repositorio, no con sus nombres:
   # `repo:<owner>@<id-org>/<repo>@<id-repo>`. Un repositorio sin ID en `github_ids` falla el plan (índice inexistente).
   subject_prefix = {
-    for r in distinct(concat([var.infra_repository], values(var.deploy_repositories))) :
+    for r in distinct(concat([var.infra_repository], values(var.deploy_repositories), var.web_deploy_repository == null ? [] : [var.web_deploy_repository])) :
     r => "repo:${split("/", r)[0]}@${var.github_ids.organization_id}/${split("/", r)[1]}@${var.github_ids.repositories[r]}"
   }
 
@@ -244,6 +244,66 @@ resource "aws_iam_role_policy" "service_deploy" {
         Effect   = "Allow"
         Action   = ["eks:DescribeCluster"]
         Resource = local.cluster_arn
+      },
+    ]
+  })
+}
+
+# ---------------------------------------------------------------------------
+# Despliegue de la consola web (HU39): publica en su bucket e invalida la caché; nada del clúster ni de ECR
+# ---------------------------------------------------------------------------
+resource "aws_iam_role" "web_deploy" {
+  count = var.web_deploy_repository == null ? 0 : 1
+
+  name                 = "solventa-ci-deploy-web"
+  max_session_duration = var.max_session_duration
+  depends_on           = [aws_iam_openid_connect_provider.github]
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = local.oidc_provider_arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.oidc_host}:aud" = "sts.amazonaws.com"
+          "${local.oidc_host}:sub" = "${local.subject_prefix[var.web_deploy_repository]}:environment:${var.environment_name}"
+        }
+      }
+    }]
+  })
+
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "web_deploy" {
+  count = var.web_deploy_repository == null ? 0 : 1
+
+  name = "web-bucket-and-invalidation"
+  role = aws_iam_role.web_deploy[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ListWebBucket"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = "arn:${local.partition}:s3:::${local.platform_iam_prefix}web-${local.account_id}"
+      },
+      {
+        Sid      = "WriteWebObjects"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "arn:${local.partition}:s3:::${local.platform_iam_prefix}web-${local.account_id}/*"
+      },
+      {
+        # bootstrap corre antes de que exista la distribución: su id no se conoce aquí.
+        Sid      = "InvalidateCache"
+        Effect   = "Allow"
+        Action   = ["cloudfront:CreateInvalidation"]
+        Resource = "arn:${local.partition}:cloudfront::${local.account_id}:distribution/*"
       },
     ]
   })

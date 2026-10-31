@@ -143,3 +143,62 @@ run "high_volume_paths_get_their_own_rate_limit_and_leave_the_global_one" {
     error_message = "RULE waf-high-volume: the global rate rule must not count the high-volume paths (scope-down)."
   }
 }
+
+run "without_web_everything_goes_to_the_api" {
+  command = plan
+
+  assert {
+    condition     = aws_cloudfront_distribution.this.default_cache_behavior[0].target_origin_id == "api-gateway"
+    error_message = "RULE edge-api-default: without the web console the default behavior must reach the API Gateway."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.this.ordered_cache_behavior) == 0
+    error_message = "RULE edge-api-default: without the web console there are no extra behaviors."
+  }
+}
+
+run "web_console_keeps_the_api_uncached_and_unchanged_for_mobile" {
+  command = plan
+
+  variables {
+    enable_web        = true
+    web_origin_domain = "solventa-staging-web-123.s3.us-east-1.amazonaws.com"
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.this.default_cache_behavior[0].target_origin_id == "web"
+    error_message = "RULE edge-web-default: with the web console the default behavior must reach the bucket."
+  }
+
+  assert {
+    condition     = toset(aws_cloudfront_distribution.this.default_cache_behavior[0].allowed_methods) == toset(["GET", "HEAD"])
+    error_message = "RULE edge-web-readonly: the bucket origin must only accept reads."
+  }
+
+  assert {
+    condition = alltrue([
+      for b in aws_cloudfront_distribution.this.ordered_cache_behavior :
+      b.target_origin_id == "api-gateway" && b.cache_policy_id == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    ])
+    error_message = "RULE edge-api-no-cache: API behaviors must reach the API Gateway without caching."
+  }
+
+  assert {
+    condition     = toset([for b in aws_cloudfront_distribution.this.ordered_cache_behavior : b.path_pattern]) == toset(["/v1/*", "/api/*"])
+    error_message = "RULE edge-api-paths: the API must stay under /v1/* (mobile) and /api/* (web console)."
+  }
+
+  assert {
+    condition = alltrue([
+      for b in aws_cloudfront_distribution.this.ordered_cache_behavior :
+      b.path_pattern != "/v1/*" || length(b.function_association) == 0
+    ])
+    error_message = "RULE edge-mobile-unchanged: /v1/* must not be rewritten."
+  }
+
+  assert {
+    condition     = aws_cloudfront_origin_access_control.web[0].signing_behavior == "always"
+    error_message = "RULE edge-web-oac: CloudFront must sign its reads of the web bucket."
+  }
+}
