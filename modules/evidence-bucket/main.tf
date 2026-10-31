@@ -155,6 +155,12 @@ resource "aws_iam_role_policy" "writer" {
         Action   = ["s3:GetObject"]
         Resource = local.object_arns
       }] : [],
+      # Para que leer una clave inexistente sea 404 (NoSuchKey) y no 403: el servicio genera el documento la primera vez.
+      var.list_access ? [{
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = local.bucket_arn
+      }] : [],
     )
   })
 }

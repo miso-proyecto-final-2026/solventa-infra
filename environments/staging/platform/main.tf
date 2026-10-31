@@ -115,8 +115,10 @@ module "polizas_documentos" {
   # HU22: el certificado de cobertura se guarda en certificados/ y se entrega al titular o por un enlace firmado.
   extra_write_prefixes = ["firmadas/", "certificados/"]
   read_access          = true
-  retention_days       = null
-  noncurrent_days      = 30
+  # El certificado se genera la primera vez que se pide: leerlo antes debe dar «no existe» (404), no «sin permiso» (403).
+  list_access     = true
+  retention_days  = null
+  noncurrent_days = 30
   # Staging bajo demanda: solo guarda documentos sintéticos y se destruye tras cada sesión.
   force_destroy = true
 
