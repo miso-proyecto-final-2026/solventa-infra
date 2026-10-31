@@ -2,12 +2,12 @@
 # tests: modules/ses-sender
 --- a/modules/ses-sender/main.tf
 +++ b/modules/ses-sender/main.tf
-@@ -24,7 +24,7 @@
+@@ -28,7 +28,7 @@
      Statement = [{
        Effect   = "Allow"
        Action   = ["ses:SendEmail"]
--      Resource = local.identity_arn
+-      Resource = local.identities_arn
 +      Resource = "*"
-     }]
-   })
- }
+       Condition = {
+         StringEquals = { "ses:FromAddress" = var.sender_email }
+       }
