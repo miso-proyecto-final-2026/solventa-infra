@@ -85,6 +85,11 @@ output "polizas_bucket" {
   value       = var.enable_events ? module.polizas_documentos[0].bucket_name : null
 }
 
+output "logs_bucket" {
+  description = "Bucket S3 de logs de Loki (solo referencia); null si enable_logs_storage es false."
+  value       = one(module.logs_loki[*].bucket_name)
+}
+
 output "public_url" {
   description = "URL pública del borde (CloudFront); null si el borde está desactivado."
   value       = local.edge_enabled ? module.cloudfront[0].url : null

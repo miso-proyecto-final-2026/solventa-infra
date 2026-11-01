@@ -131,6 +131,20 @@ resource "terraform_data" "require_suscripcion" {
   }
 }
 
+# Logs de Loki (observabilidad): chunks e índice en S3, para que sobrevivan a los reinicios del pod. Loki accede por Pod Identity
+# (cuenta de servicio `loki` del namespace `monitoring`, que crea el chart en la etapa baseline).
+module "logs_loki" {
+  count  = var.enable_logs_storage ? 1 : 0
+  source = "../../../modules/logs-storage"
+
+  bucket_name  = "solventa-${var.name}-logs-${local.account_id}"
+  cluster_name = module.eks.cluster_name
+  # Staging bajo demanda: solo guarda logs de pruebas y se destruye tras cada sesión.
+  force_destroy = true
+
+  tags = local.tags
+}
+
 module "postgres" {
   source = "../../../modules/postgres"
 

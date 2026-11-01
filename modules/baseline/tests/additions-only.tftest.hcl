@@ -135,3 +135,31 @@ run "observability_collects_workload_and_platform_logs_when_enabled" {
     error_message = "RULE observability-optional: enable_observability installs Grafana next to Prometheus."
   }
 }
+
+run "loki_keeps_logs_on_the_node_without_a_logs_bucket" {
+  command = plan
+
+  variables {
+    enable_observability = true
+  }
+
+  assert {
+    condition     = module.observability[0].loki_storage == "filesystem"
+    error_message = "RULE logs-s3: without a bucket Loki falls back to the node's ephemeral disk."
+  }
+}
+
+run "loki_keeps_logs_in_the_bucket_from_the_platform" {
+  command = plan
+
+  variables {
+    enable_observability = true
+    logs_bucket          = "solventa-staging-logs-123456789012"
+    logs_bucket_region   = "us-east-1"
+  }
+
+  assert {
+    condition     = module.observability[0].loki_storage == "s3"
+    error_message = "RULE logs-s3: the platform's logs bucket reaches Loki through the baseline."
+  }
+}

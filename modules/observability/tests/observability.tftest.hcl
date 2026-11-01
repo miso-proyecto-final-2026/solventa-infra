@@ -147,3 +147,75 @@ run "chart_versions_are_pinned" {
     error_message = "Chart versions must be pinned."
   }
 }
+
+# Con bucket de logs Loki guarda en S3 (Pod Identity, sin claves) y conserva más tiempo; el WAL sigue en el disco efímero.
+run "loki_uses_s3_when_a_logs_bucket_is_given" {
+  command = plan
+
+  variables {
+    logs_bucket        = "solventa-staging-logs-123456789012"
+    logs_bucket_region = "us-east-1"
+  }
+
+  assert {
+    condition = (
+      yamldecode(helm_release.loki.values[0]).loki.storage.type == "s3" &&
+      yamldecode(helm_release.loki.values[0]).loki.storage.bucketNames.chunks == "solventa-staging-logs-123456789012" &&
+      yamldecode(helm_release.loki.values[0]).loki.storage.s3.region == "us-east-1"
+    )
+    error_message = "RULE logs-s3: Loki stores chunks and index in the logs bucket."
+  }
+
+  assert {
+    condition = (
+      yamldecode(helm_release.loki.values[0]).loki.schemaConfig.configs[0].object_store == "s3" &&
+      yamldecode(helm_release.loki.values[0]).loki.compactor.delete_request_store == "s3"
+    )
+    error_message = "RULE logs-s3: the index schema and the compactor use the same object store."
+  }
+
+  assert {
+    condition     = !can(yamldecode(helm_release.loki.values[0]).loki.storage.s3.accessKeyId) && !can(yamldecode(helm_release.loki.values[0]).loki.storage.s3.secretAccessKey)
+    error_message = "RULE logs-s3: no static AWS keys; credentials come from Pod Identity."
+  }
+
+  assert {
+    condition     = yamldecode(helm_release.loki.values[0]).serviceAccount.name == "loki"
+    error_message = "RULE logs-s3: Loki runs with the service account the Pod Identity role is bound to."
+  }
+
+  assert {
+    condition     = yamldecode(helm_release.loki.values[0]).loki.limits_config.retention_period == "168h"
+    error_message = "RULE logs-s3: with a bucket logs are kept 7 days."
+  }
+
+  assert {
+    condition     = yamldecode(helm_release.loki.values[0]).singleBinary.persistence.enabled == false && yamldecode(helm_release.loki.values[0]).singleBinary.extraVolumes[0].emptyDir.sizeLimit == "3Gi"
+    error_message = "RULE observability-minimal: still no PVC; the ephemeral disk holds only the WAL and index cache."
+  }
+}
+
+run "an_explicit_retention_overrides_the_default" {
+  command = plan
+
+  variables {
+    logs_bucket        = "solventa-staging-logs-123456789012"
+    logs_bucket_region = "us-east-1"
+    log_retention      = "72h"
+  }
+
+  assert {
+    condition     = yamldecode(helm_release.loki.values[0]).loki.limits_config.retention_period == "72h"
+    error_message = "log_retention must win over the default."
+  }
+}
+
+run "a_bucket_without_region_is_rejected" {
+  command = plan
+
+  variables {
+    logs_bucket = "solventa-staging-logs-123456789012"
+  }
+
+  expect_failures = [var.logs_bucket_region]
+}

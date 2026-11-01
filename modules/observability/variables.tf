@@ -22,13 +22,36 @@ variable "prometheus_url" {
 }
 
 variable "log_retention" {
-  description = "Cuánto conserva Loki los logs. Se guardan en el disco del nodo (emptyDir): se pierden si el pod de Loki se reinicia."
+  description = "Cuánto conserva Loki los logs. null = 48h en el disco del nodo (se pierden si el pod se reinicia) o 168h si hay bucket de logs."
   type        = string
-  default     = "48h"
+  default     = null
+}
+
+variable "logs_bucket" {
+  description = "Bucket S3 donde Loki guarda chunks e índice (lo crea modules/logs-storage). null = disco efímero del nodo."
+  type        = string
+  default     = null
+}
+
+variable "logs_bucket_region" {
+  description = "Región del bucket de logs. Obligatoria si hay bucket."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.logs_bucket == null || var.logs_bucket_region != null
+    error_message = "logs_bucket_region is required when logs_bucket is set."
+  }
+}
+
+variable "loki_service_account" {
+  description = "Cuenta de servicio de Loki. Debe coincidir con la que autoriza el rol de Pod Identity del bucket."
+  type        = string
+  default     = "loki"
 }
 
 variable "loki_storage_limit" {
-  description = "Tope del disco efímero de Loki. Si lo supera, Kubernetes desaloja el pod: la retención debe mantenerlo muy por debajo."
+  description = "Tope del disco efímero de Loki (con bucket solo guarda el WAL y la caché del índice). Si lo supera, Kubernetes desaloja el pod."
   type        = string
   default     = "3Gi"
 }

@@ -4,14 +4,20 @@
 #
 # Decisiones de costo, todas deliberadas:
 # - Alloy es un único Deployment que lee los logs por la API de Kubernetes, no un DaemonSet por nodo.
-# - Loki guarda en un emptyDir: sin PVC, sin bucket y sin roles de AWS, así que el destroy no deja nada.
-#   A cambio, los logs se pierden si el pod de Loki se reinicia; la retención corta mantiene el disco acotado.
+# - Loki guarda en S3 si se le da `logs_bucket` (modules/logs-storage, acceso por Pod Identity): los logs sobreviven a los
+#   reinicios y la retención sube a 7 días. Sin bucket cae a un emptyDir sin PVC ni roles de AWS: nada queda al destruir, pero los
+#   logs se pierden si el pod de Loki se reinicia y la retención corta mantiene el disco acotado. En ambos casos el WAL y la
+#   caché del índice están en el emptyDir: un reinicio pierde solo los minutos que Loki aún no había subido.
 # - Grafana no persiste nada: fuentes de datos y dashboards se aprovisionan desde este módulo.
 # - Sin Ingress ni Service público: se abre con `kubectl port-forward`. La contraseña de admin la genera el chart
 #   (Secret `grafana` del namespace); nunca pasa por Terraform ni por el estado.
 
 locals {
   loki_url = "http://loki.${var.namespace}.svc:3100"
+
+  use_s3        = var.logs_bucket != null
+  loki_store    = local.use_s3 ? "s3" : "filesystem"
+  log_retention = coalesce(var.log_retention, local.use_s3 ? "168h" : "48h")
 
   dashboards = {
     logs      = file("${path.module}/dashboards/logs.json")
@@ -101,7 +107,7 @@ resource "helm_release" "loki" {
         configs = [{
           from         = "2024-04-01"
           store        = "tsdb"
-          object_store = "filesystem"
+          object_store = local.loki_store
           schema       = "v13"
           index = {
             prefix = "index_"
@@ -110,26 +116,36 @@ resource "helm_release" "loki" {
         }]
       }
 
-      storage = { type = "filesystem" }
+      storage = merge(
+        { type = local.loki_store },
+        local.use_s3 ? {
+          bucketNames = { chunks = var.logs_bucket, ruler = var.logs_bucket, admin = var.logs_bucket }
+          # Sin claves: el SDK toma las credenciales que EKS Pod Identity inyecta en el pod.
+          s3 = { region = var.logs_bucket_region }
+        } : {},
+      )
 
       limits_config = {
-        retention_period           = var.log_retention
+        retention_period           = local.log_retention
         reject_old_samples         = true
-        reject_old_samples_max_age = var.log_retention
+        reject_old_samples_max_age = local.log_retention
       }
 
       compactor = {
         working_directory      = "/var/loki/compactor"
         retention_enabled      = true
-        delete_request_store   = "filesystem"
+        delete_request_store   = local.loki_store
         retention_delete_delay = "2h"
       }
     }
 
+    # Con bucket el rol de Pod Identity se asocia a esta cuenta de servicio, por nombre.
+    serviceAccount = { create = true, name = var.loki_service_account }
+
     singleBinary = {
       replicas    = 1
       persistence = { enabled = false }
-      # Sin PVC el chart no monta /var/loki: se monta un disco efímero acotado.
+      # Sin PVC el chart no monta /var/loki: se monta un disco efímero acotado (WAL, caché del índice y, sin bucket, los datos).
       extraVolumes      = [{ name = "storage", emptyDir = { sizeLimit = var.loki_storage_limit } }]
       extraVolumeMounts = [{ name = "storage", mountPath = "/var/loki" }]
       resources = {

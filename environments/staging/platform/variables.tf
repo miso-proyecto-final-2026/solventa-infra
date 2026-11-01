@@ -170,6 +170,12 @@ variable "edge_high_volume_throttling_burst_limit" {
   default     = 4000
 }
 
+variable "enable_logs_storage" {
+  description = "Crear el bucket S3 de logs de Loki (centavos al mes). Apagado, Loki usa el disco del nodo y pierde los logs si se reinicia."
+  type        = bool
+  default     = true
+}
+
 variable "enable_events" {
   description = "Crear el bus de eventos (MSK, HS2). Factura por hora y tarda ~25 min en crearse: apagarlo si la sesión no usa eventos."
   type        = bool

@@ -12,3 +12,8 @@ output "loki_url" {
   description = "URL interna de Loki."
   value       = local.loki_url
 }
+
+output "loki_storage" {
+  description = "Dónde guarda Loki los logs: `s3` (sobreviven a reinicios) o `filesystem` (disco del nodo)."
+  value       = local.loki_store
+}

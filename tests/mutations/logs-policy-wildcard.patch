@@ -1,0 +1,13 @@
+# rule: RULE least-privilege
+# tests: modules/logs-storage
+--- a/modules/logs-storage/main.tf
++++ b/modules/logs-storage/main.tf
+@@ -117,7 +117,7 @@
+       {
+         Sid      = "LeerEscribirYBorrarObjetos" # Borrar: lo necesita el compactor para aplicar la retención.
+         Effect   = "Allow"
+-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
++        Action   = ["s3:*"]
+         Resource = "${local.bucket_arn}/*"
+       },
+     ]

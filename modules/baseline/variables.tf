@@ -107,6 +107,18 @@ variable "enable_observability" {
   default     = false
 }
 
+variable "logs_bucket" {
+  description = "Bucket S3 donde Loki guarda los logs (lo crea la etapa platform). null = disco efímero: los logs se pierden si Loki se reinicia."
+  type        = string
+  default     = null
+}
+
+variable "logs_bucket_region" {
+  description = "Región del bucket de logs. Obligatoria si hay bucket."
+  type        = string
+  default     = null
+}
+
 variable "staging_namespace" {
   description = "Namespace de las cargas."
   type        = string

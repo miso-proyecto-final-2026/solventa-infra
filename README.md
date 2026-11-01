@@ -433,14 +433,19 @@ Para ver los logs de todos los servicios y las métricas en un solo panel, con l
 (`modules/observability`, encendido en staging con `enable_observability = true`):
 
 ```text
-pods (stdout) --API de Kubernetes--> Alloy (1 pod) --> Loki (1 pod, disco efímero) --> Grafana <-- Prometheus (el del HPA)
+pods (stdout) --API de Kubernetes--> Alloy (1 pod) --> Loki (1 pod) --> bucket S3 de logs
+                                                         |
+                                                         +--> Grafana <-- Prometheus (el del HPA)
 ```
 
-- **Tres pods nuevos** en el namespace `monitoring` (≈ 200 mCPU y ≈ 0,5 GiB pedidos) y **nada fuera del clúster**: sin bucket,
-  sin roles de AWS, sin PVC ni LoadBalancer. El teardown no necesita pasos extra.
+- **Tres pods nuevos** en el namespace `monitoring` (≈ 200 mCPU y ≈ 0,5 GiB pedidos), sin PVC ni LoadBalancer.
 - **Alloy es un solo pod**, no un DaemonSet por nodo: lee los logs por la API de Kubernetes. Si se reinicia puede faltar un tramo corto.
-- **Loki guarda 48 h en un `emptyDir`** acotado a 3 GiB. **Si el pod de Loki se reinicia, los logs se pierden**: es aceptable en
-  staging y es lo que evita el costo. Para conservarlos habría que darle un bucket de S3 (cambio futuro).
+- **Loki guarda en S3** (`modules/logs-storage`, creado por la etapa `platform` con `enable_logs_storage = true`): bucket privado,
+  cifrado, solo TLS, con una regla de ciclo de vida de 14 días como red de seguridad. Loki accede por **Pod Identity** (rol limitado a
+  ese bucket, cuenta de servicio `loki` del namespace `monitoring`), sin claves. Conserva **7 días** (`log_retention`, 168 h).
+  Los logs sobreviven a los reinicios del pod; solo se pierden los minutos que Loki aún no había subido (su WAL está en un `emptyDir`
+  de 3 GiB). Costo: centavos al mes. Con `enable_logs_storage = false`, o con una plataforma anterior sin el bucket, Loki cae al
+  disco del nodo (48 h, se pierden si el pod se reinicia). `platform` debe aplicarse antes que `baseline`.
 - **Grafana no persiste nada**: las fuentes de datos (Loki y el Prometheus del HPA) y los dos dashboards se aprovisionan desde el módulo
   (`modules/observability/dashboards/`). No se publica: se abre con un port-forward.
 
@@ -455,7 +460,7 @@ En la carpeta **Solventa**: *Logs de servicios* (volumen, errores y los logs con
 logs JSON con `trace_id`; los demás servicios aparecen como texto plano hasta que se estandarice su formato. Las etiquetas de Loki son
 solo `namespace`, `service`, `pod`, `container` y `level` (más etiquetas multiplicarían los flujos): lo demás se busca dentro de la línea.
 
-Pruebas: `terraform -chdir=modules/observability test`. Las mutaciones `loki-persistent-volume` y `alloy-daemonset` protegen la regla de costo.
+Pruebas: `terraform -chdir=modules/observability test`. `terraform -chdir=modules/logs-storage test` cubre el bucket y el rol. Las mutaciones `loki-persistent-volume`, `alloy-daemonset`, `logs-bucket-public` y `logs-policy-wildcard` protegen la regla de costo y la privacidad del bucket.
 
 ## Añadir un microservicio
 

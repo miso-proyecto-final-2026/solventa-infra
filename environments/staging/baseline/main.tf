@@ -107,6 +107,9 @@ module "baseline" {
   service_db_secret_versions = local.platform.service_db_secret_versions
   metrics_server_args        = var.metrics_server_args
   enable_observability       = var.enable_observability
+  # Bucket de logs de Loki; null si la plataforma no lo creó (plataforma anterior o apagado): Loki usa el disco del nodo.
+  logs_bucket        = try(local.platform.logs_bucket, null)
+  logs_bucket_region = try(local.platform.logs_bucket, null) == null ? null : local.platform.region
 
   # Ninguna carga cambia antes de comprobar que las imágenes existen.
   depends_on = [terraform_data.image_check]

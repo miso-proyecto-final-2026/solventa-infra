@@ -297,3 +297,31 @@ run "event_bus_off_creates_nothing" {
     error_message = "HU20: without the event bus there is no MSK role to attach to, so no policy documents bucket."
   }
 }
+
+# Logs de Loki en S3: bucket de la plataforma, sin segundo rol compartido (Loki tiene su propia cuenta de servicio).
+run "logs_bucket_is_part_of_the_platform_and_can_be_switched_off" {
+  command = plan
+
+  assert {
+    condition     = length(module.logs_loki) == 1 && module.logs_loki[0].bucket_name == "solventa-staging-logs-123456789012"
+    error_message = "RULE logs-s3: the platform creates the logs bucket for Loki."
+  }
+
+  assert {
+    condition     = output.logs_bucket == "solventa-staging-logs-123456789012"
+    error_message = "RULE logs-s3: the baseline reads the bucket name from the platform output."
+  }
+}
+
+run "logs_bucket_off_creates_nothing" {
+  command = plan
+
+  variables {
+    enable_logs_storage = false
+  }
+
+  assert {
+    condition     = length(module.logs_loki) == 0 && output.logs_bucket == null
+    error_message = "RULE logs-s3: without enable_logs_storage no bucket or role exists and the output is null."
+  }
+}
