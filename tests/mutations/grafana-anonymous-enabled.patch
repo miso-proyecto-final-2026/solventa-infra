@@ -1,0 +1,13 @@
+# rule: RULE grafana-login
+# tests: modules/observability
+--- a/modules/observability/main.tf
++++ b/modules/observability/main.tf
+@@ -258,7 +258,7 @@
+         check_for_updates = false
+       }
+       users            = { allow_sign_up = false }
+-      "auth.anonymous" = { enabled = false }
++      "auth.anonymous" = { enabled = true }
+     }, local.grafana_edge_ini)
+ 
+     datasources = {

@@ -17,3 +17,8 @@ output "loki_storage" {
   description = "Dónde guarda Loki los logs: `s3` (sobreviven a reinicios) o `filesystem` (disco del nodo)."
   value       = local.loki_store
 }
+
+output "grafana_url" {
+  description = "URL pública de Grafana (con login); null si solo se abre con port-forward."
+  value       = local.grafana_public ? "https://${local.grafana_host}${local.grafana_subpath}/" : null
+}

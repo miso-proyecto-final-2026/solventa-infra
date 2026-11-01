@@ -95,6 +95,16 @@ output "public_url" {
   value       = local.edge_enabled ? module.cloudfront[0].url : null
 }
 
+output "grafana_node_port" {
+  description = "NodePort por el que el borde alcanza a Grafana; null si Grafana no se publica."
+  value       = local.grafana_edge_enabled ? var.grafana_node_port : null
+}
+
+output "grafana_url" {
+  description = "URL de Grafana (login propio); null si Grafana no se publica por el borde."
+  value       = local.grafana_edge_enabled ? "${module.cloudfront[0].url}/grafana/" : null
+}
+
 output "api_gateway_endpoint" {
   description = "Endpoint directo del API Gateway; el tráfico de clientes debe entrar por public_url."
   value       = local.edge_enabled ? module.api_gateway[0].api_endpoint : null

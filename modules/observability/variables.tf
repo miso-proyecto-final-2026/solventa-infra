@@ -50,6 +50,24 @@ variable "loki_service_account" {
   default     = "loki"
 }
 
+variable "grafana_edge" {
+  description = <<-EOT
+    Publica Grafana bajo /grafana detrás del borde (CloudFront → API Gateway → NLB). `node_port` es el NodePort del Service que
+    el NLB alcanza; `public_url` es la URL pública del borde (https://<dominio>), de la que salen el dominio y la URL raíz de Grafana.
+    null = Grafana queda privado (ClusterIP, se abre con port-forward).
+  EOT
+  type = object({
+    node_port  = number
+    public_url = string
+  })
+  default = null
+
+  validation {
+    condition     = var.grafana_edge == null ? true : (var.grafana_edge.node_port >= 30000 && var.grafana_edge.node_port <= 32767 && startswith(var.grafana_edge.public_url, "https://"))
+    error_message = "grafana_edge needs a NodePort in 30000-32767 and an https:// public_url."
+  }
+}
+
 variable "loki_storage_limit" {
   description = "Tope del disco efímero de Loki (con bucket solo guarda el WAL y la caché del índice). Si lo supera, Kubernetes desaloja el pod."
   type        = string

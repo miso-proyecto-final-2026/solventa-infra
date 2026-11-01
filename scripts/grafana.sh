@@ -1,10 +1,17 @@
 #!/bin/sh
-# Abre Grafana (logs y métricas) en http://localhost:3000 con un port-forward al Service del clúster.
-# Imprime el usuario y la contraseña del Secret `grafana` (la genera el chart; nunca está en git ni en el estado).
+# Grafana (logs y métricas). Imprime el usuario y la contraseña del Secret `grafana` (la genera el chart; nunca está en git
+# ni en el estado) y, sin `--credenciales`, abre http://localhost:3000 con un port-forward al Service del clúster.
+# Con Grafana publicado por el borde, la URL es la salida `grafana_url` de la etapa platform y basta con `--credenciales`.
 # Uso:  scripts/grafana.sh [puerto-local]      Ctrl+C para cerrar.
+#       scripts/grafana.sh --credenciales      solo imprime usuario y contraseña
 set -eu
 
 NS=${GRAFANA_NAMESPACE:-monitoring}
+SOLO_CREDENCIALES=no
+if [ "${1:-}" = "--credenciales" ]; then
+  SOLO_CREDENCIALES=si
+  shift
+fi
 PUERTO=${1:-3000}
 
 for tool in kubectl base64; do
@@ -18,6 +25,12 @@ fi
 
 usuario=$(kubectl -n "$NS" get secret grafana -o jsonpath='{.data.admin-user}' | base64 -d)
 clave=$(kubectl -n "$NS" get secret grafana -o jsonpath='{.data.admin-password}' | base64 -d)
+
+if [ "$SOLO_CREDENCIALES" = "si" ]; then
+  echo "Usuario:    $usuario"
+  echo "Contraseña: $clave"
+  exit 0
+fi
 
 echo "Grafana:    http://localhost:$PUERTO"
 echo "Usuario:    $usuario"

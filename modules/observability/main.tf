@@ -9,11 +9,45 @@
 #   logs se pierden si el pod de Loki se reinicia y la retención corta mantiene el disco acotado. En ambos casos el WAL y la
 #   caché del índice están en el emptyDir: un reinicio pierde solo los minutos que Loki aún no había subido.
 # - Grafana no persiste nada: fuentes de datos y dashboards se aprovisionan desde este módulo.
-# - Sin Ingress ni Service público: se abre con `kubectl port-forward`. La contraseña de admin la genera el chart
+# - Sin Ingress: se abre con `kubectl port-forward` o, con `grafana_edge`, por el borde de la plataforma en /grafana
+#   (CloudFront + WAF → API Gateway → NLB → NodePort), con el login de Grafana. La contraseña de admin la genera el chart
 #   (Secret `grafana` del namespace); nunca pasa por Terraform ni por el estado.
 
 locals {
   loki_url = "http://loki.${var.namespace}.svc:3100"
+
+  # Grafana detrás del borde: sirve bajo /grafana y confía en el dominio público (el Host que ve es el del API Gateway, no el de
+  # CloudFront, y sin eso el CSRF de Grafana rechaza el login).
+  grafana_public  = var.grafana_edge != null
+  grafana_host    = local.grafana_public ? regex("^https://([^/]+)", var.grafana_edge.public_url)[0] : ""
+  grafana_subpath = "/grafana"
+  grafana_health  = "${local.grafana_subpath}/api/health"
+
+  # `for ... if` en vez de un condicional: Terraform no unifica objetos de distinta forma en `cond ? {...} : {}`.
+  grafana_edge_ini = { for k, v in {
+    server = {
+      domain              = local.grafana_host
+      root_url            = "https://${local.grafana_host}${local.grafana_subpath}/"
+      serve_from_sub_path = true
+    }
+    security = {
+      cookie_secure        = true
+      cookie_samesite      = "lax"
+      csrf_trusted_origins = local.grafana_host
+    }
+  } : k => v if local.grafana_public }
+
+  # El NLB entra por un NodePort fijo. Con sub-ruta Grafana solo responde bajo /grafana: las sondas deben usar esa ruta.
+  grafana_edge_values = { for k, v in {
+    service        = { type = "NodePort", nodePort = try(var.grafana_edge.node_port, 0) }
+    readinessProbe = { httpGet = { path = local.grafana_health, port = "grafana" } }
+    livenessProbe = {
+      httpGet             = { path = local.grafana_health, port = "grafana" }
+      initialDelaySeconds = 60
+      timeoutSeconds      = 30
+      failureThreshold    = 10
+    }
+  } : k => v if local.grafana_public }
 
   use_s3        = var.logs_bucket != null
   loki_store    = local.use_s3 ? "s3" : "filesystem"
@@ -208,7 +242,7 @@ resource "helm_release" "grafana" {
   chart      = "grafana"
   version    = var.grafana_chart_version
 
-  values = [yamlencode({
+  values = [yamlencode(merge({
     # Sin `adminPassword`: el chart genera una aleatoria en el Secret `grafana`.
     persistence   = { enabled = false }
     testFramework = { enabled = false }
@@ -218,13 +252,14 @@ resource "helm_release" "grafana" {
       limits   = { memory = "256Mi" }
     }
 
-    "grafana.ini" = {
+    "grafana.ini" = merge({
       analytics = {
         reporting_enabled = false
         check_for_updates = false
       }
-      users = { allow_sign_up = false }
-    }
+      users            = { allow_sign_up = false }
+      "auth.anonymous" = { enabled = false }
+    }, local.grafana_edge_ini)
 
     datasources = {
       "datasources.yaml" = {
@@ -266,7 +301,7 @@ resource "helm_release" "grafana" {
     dashboards = {
       solventa = { for nombre, json in local.dashboards : nombre => { json = json } }
     }
-  })]
+  }, local.grafana_edge_values))]
 
   wait       = true
   depends_on = [helm_release.loki]

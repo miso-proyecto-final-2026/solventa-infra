@@ -107,6 +107,15 @@ variable "enable_observability" {
   default     = false
 }
 
+variable "grafana_edge" {
+  description = "Publica Grafana bajo /grafana detrás del borde: NodePort y URL pública (la etapa platform los define). null = privado, port-forward."
+  type = object({
+    node_port  = number
+    public_url = string
+  })
+  default = null
+}
+
 variable "logs_bucket" {
   description = "Bucket S3 donde Loki guarda los logs (lo crea la etapa platform). null = disco efímero: los logs se pierden si Loki se reinicia."
   type        = string

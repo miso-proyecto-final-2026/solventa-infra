@@ -36,6 +36,16 @@ variable "high_volume_rate_limit_per_5min" {
   default     = 600000
 }
 
+variable "inspection_exempt_path_regex" {
+  description = <<-EOT
+    Ruta (regex sobre uri_path) exenta solo de la inspección SQLi/XSS, pero no del límite de cuerpo. Es para Grafana: sus
+    consultas (LogQL, PromQL) llevan comillas, llaves y operadores que el WAF confunde con inyección. Está detrás del login de
+    Grafana. Vacío = no hay exención adicional.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "exempt_body_path_regex" {
   description = <<-EOT
     Ruta (regex sobre uri_path) exenta del límite de cuerpo y de la inspección del contenido (SQLi/XSS en body).

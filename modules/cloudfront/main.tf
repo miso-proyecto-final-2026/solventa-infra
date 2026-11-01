@@ -6,6 +6,9 @@ data "aws_region" "current" {}
 
 locals {
   # 256 KB = 262144 bytes. Content-Length es texto: se bloquean los de 7 o más dígitos y los de 6 dígitos mayores que 262144.
+  # Rutas exentas de SQLi/XSS: la de la subida de identidad (binaria) y, si se da, la de Grafana.
+  inspection_exempt_regex = var.inspection_exempt_path_regex == "" ? var.exempt_body_path_regex : "(${var.exempt_body_path_regex})|(${var.inspection_exempt_path_regex})"
+
   content_length_over_256kb = "^([0-9]{7,}|[3-9][0-9]{5}|2[7-9][0-9]{4}|26[3-9][0-9]{3}|262[2-9][0-9]{2}|2621[5-9][0-9]|26214[5-9])$"
 }
 
@@ -174,7 +177,7 @@ resource "aws_wafv2_web_acl" "this" {
           not_statement {
             statement {
               regex_match_statement {
-                regex_string = var.exempt_body_path_regex
+                regex_string = local.inspection_exempt_regex
 
                 field_to_match {
                   uri_path {}
@@ -266,7 +269,7 @@ resource "aws_wafv2_web_acl" "this" {
               not_statement {
                 statement {
                   regex_match_statement {
-                    regex_string = var.exempt_body_path_regex
+                    regex_string = local.inspection_exempt_regex
 
                     field_to_match {
                       uri_path {}

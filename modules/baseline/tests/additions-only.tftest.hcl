@@ -163,3 +163,17 @@ run "loki_keeps_logs_in_the_bucket_from_the_platform" {
     error_message = "RULE logs-s3: the platform's logs bucket reaches Loki through the baseline."
   }
 }
+
+run "grafana_is_published_when_the_platform_gives_the_edge" {
+  command = plan
+
+  variables {
+    enable_observability = true
+    grafana_edge         = { node_port = 30090, public_url = "https://d111111abcdef8.cloudfront.net" }
+  }
+
+  assert {
+    condition     = module.observability[0].grafana_url == "https://d111111abcdef8.cloudfront.net/grafana/"
+    error_message = "RULE grafana-edge: the platform's edge reaches Grafana through the baseline."
+  }
+}

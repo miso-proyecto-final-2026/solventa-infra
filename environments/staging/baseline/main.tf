@@ -108,6 +108,11 @@ module "baseline" {
   metrics_server_args        = var.metrics_server_args
   enable_observability       = var.enable_observability
   # Bucket de logs de Loki; null si la plataforma no lo creó (plataforma anterior o apagado): Loki usa el disco del nodo.
+  # Grafana en /grafana por el borde; null si la plataforma no lo publica (borde apagado o plataforma anterior): port-forward.
+  grafana_edge = try(local.platform.grafana_node_port, null) == null || try(local.platform.public_url, null) == null ? null : {
+    node_port  = local.platform.grafana_node_port
+    public_url = local.platform.public_url
+  }
   logs_bucket        = try(local.platform.logs_bucket, null)
   logs_bucket_region = try(local.platform.logs_bucket, null) == null ? null : local.platform.region
 

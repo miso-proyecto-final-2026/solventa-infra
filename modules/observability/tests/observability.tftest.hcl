@@ -219,3 +219,84 @@ run "a_bucket_without_region_is_rejected" {
 
   expect_failures = [var.logs_bucket_region]
 }
+
+# Grafana publicado por el borde: NodePort, sub-ruta y confianza en el dominio público; el login sigue siendo el de Grafana.
+run "grafana_is_served_from_a_subpath_behind_the_edge" {
+  command = plan
+
+  variables {
+    grafana_edge = { node_port = 30090, public_url = "https://d111111abcdef8.cloudfront.net" }
+  }
+
+  assert {
+    condition = (
+      yamldecode(helm_release.grafana.values[0]).service.type == "NodePort" &&
+      yamldecode(helm_release.grafana.values[0]).service.nodePort == 30090
+    )
+    error_message = "RULE grafana-edge: the NLB reaches Grafana through a fixed NodePort."
+  }
+
+  assert {
+    condition = (
+      yamldecode(helm_release.grafana.values[0])["grafana.ini"].server.root_url == "https://d111111abcdef8.cloudfront.net/grafana/" &&
+      yamldecode(helm_release.grafana.values[0])["grafana.ini"].server.serve_from_sub_path == true &&
+      yamldecode(helm_release.grafana.values[0])["grafana.ini"].server.domain == "d111111abcdef8.cloudfront.net"
+    )
+    error_message = "RULE grafana-edge: Grafana builds its links on the public URL under /grafana."
+  }
+
+  assert {
+    condition = (
+      yamldecode(helm_release.grafana.values[0])["grafana.ini"].security.csrf_trusted_origins == "d111111abcdef8.cloudfront.net" &&
+      yamldecode(helm_release.grafana.values[0])["grafana.ini"].security.cookie_secure == true
+    )
+    error_message = "RULE grafana-edge: the public domain is a trusted origin (the Host Grafana sees is the API Gateway's) and cookies are Secure."
+  }
+
+  assert {
+    condition = (
+      yamldecode(helm_release.grafana.values[0]).readinessProbe.httpGet.path == "/grafana/api/health" &&
+      yamldecode(helm_release.grafana.values[0]).livenessProbe.httpGet.path == "/grafana/api/health"
+    )
+    error_message = "RULE grafana-edge: with a sub-path the probes must use /grafana/api/health or the pod never becomes ready."
+  }
+
+  assert {
+    condition = (
+      !contains(keys(yamldecode(helm_release.grafana.values[0])), "adminPassword") &&
+      !contains(keys(yamldecode(helm_release.grafana.values[0])), "ingress") &&
+      yamldecode(helm_release.grafana.values[0])["grafana.ini"]["auth.anonymous"].enabled == false &&
+      yamldecode(helm_release.grafana.values[0])["grafana.ini"].users.allow_sign_up == false
+    )
+    error_message = "RULE grafana-login: no anonymous access, no sign-up, and the admin password stays out of Terraform."
+  }
+
+  assert {
+    condition     = output.grafana_url == "https://d111111abcdef8.cloudfront.net/grafana/"
+    error_message = "The module reports Grafana's public URL."
+  }
+}
+
+run "grafana_stays_private_without_the_edge" {
+  command = plan
+
+  assert {
+    condition     = !contains(keys(yamldecode(helm_release.grafana.values[0])), "service") && !contains(keys(yamldecode(helm_release.grafana.values[0])["grafana.ini"]), "server") && output.grafana_url == null
+    error_message = "RULE observability-private: without grafana_edge Grafana has no public Service and no sub-path."
+  }
+
+  assert {
+    condition     = yamldecode(helm_release.grafana.values[0])["grafana.ini"]["auth.anonymous"].enabled == false
+    error_message = "RULE grafana-login: anonymous access is always off."
+  }
+}
+
+run "grafana_edge_requires_https_and_a_nodeport" {
+  command = plan
+
+  variables {
+    grafana_edge = { node_port = 8080, public_url = "http://example.com" }
+  }
+
+  expect_failures = [var.grafana_edge]
+}

@@ -143,3 +143,35 @@ run "high_volume_paths_get_their_own_rate_limit_and_leave_the_global_one" {
     error_message = "RULE waf-high-volume: the global rate rule must not count the high-volume paths (scope-down)."
   }
 }
+
+# Grafana: sus consultas (LogQL/PromQL) parecen inyección. Solo se exime de SQLi/XSS; el límite de cuerpo sigue aplicando.
+run "inspection_exemption_is_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = local.inspection_exempt_regex == var.exempt_body_path_regex
+    error_message = "RULE waf-inspection: without an extra path only the identity upload is exempt from SQLi/XSS."
+  }
+}
+
+run "grafana_path_is_exempt_from_inspection_only" {
+  command = plan
+
+  variables {
+    inspection_exempt_path_regex = "^/grafana(/.*)?$"
+  }
+
+  assert {
+    condition     = strcontains(local.inspection_exempt_regex, "^/grafana(/.*)?$") && strcontains(local.inspection_exempt_regex, var.exempt_body_path_regex)
+    error_message = "RULE waf-inspection: SQLi/XSS skip both the identity upload and the extra path."
+  }
+
+  assert {
+    condition = one([
+      for r in aws_wafv2_web_acl.this.rule :
+      r.statement[0].and_statement[0].statement[1].not_statement[0].statement[0].regex_match_statement[0].regex_string
+      if r.name == "body-size-limit"
+    ]) == var.exempt_body_path_regex
+    error_message = "RULE waf-inspection: the body size limit still applies to the extra path (only the identity upload is exempt)."
+  }
+}

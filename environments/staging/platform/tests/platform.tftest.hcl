@@ -189,8 +189,8 @@ run "edge_follows_the_architecture_path" {
   }
 
   assert {
-    condition     = length(module.nlb[0].listener_arns) == 5
-    error_message = "RULE edge-services: solventa-backend, solventa-identidad, solventa-suscripcion, solventa-siniestros and solventa-pagos must be exposed through the NLB."
+    condition     = length(module.nlb[0].listener_arns) == 6
+    error_message = "RULE edge-services: the five services with `edge` and Grafana must be exposed through the NLB."
   }
 
   assert {
@@ -324,4 +324,57 @@ run "logs_bucket_off_creates_nothing" {
     condition     = length(module.logs_loki) == 0 && output.logs_bucket == null
     error_message = "RULE logs-s3: without enable_logs_storage no bucket or role exists and the output is null."
   }
+}
+
+# Grafana entra por el mismo borde que los servicios, bajo /grafana y con su propio login.
+run "grafana_is_published_through_the_edge" {
+  command = plan
+
+  assert {
+    condition     = contains(keys(module.nlb[0].listener_arns), "grafana") && output.grafana_node_port == 30090
+    error_message = "RULE grafana-edge: Grafana gets an NLB listener on its NodePort and the baseline reads that port."
+  }
+
+  assert {
+    condition     = !contains([for s in local.edge_services : s.edge.node_port], var.grafana_node_port)
+    error_message = "RULE grafana-edge: Grafana's NodePort must not collide with a service's."
+  }
+
+  assert {
+    condition     = local.grafana_edge["grafana"].path_prefixes == ["/grafana"] && !local.grafana_edge["grafana"].high_volume
+    error_message = "RULE grafana-edge: Grafana is routed under /grafana and is not a high-volume route."
+  }
+}
+
+run "grafana_is_not_published_when_switched_off" {
+  command = plan
+
+  variables {
+    enable_grafana_edge = false
+  }
+
+  assert {
+    condition     = !contains(keys(module.nlb[0].listener_arns), "grafana") && output.grafana_node_port == null && output.grafana_url == null
+    error_message = "RULE grafana-edge: without enable_grafana_edge Grafana stays private (port-forward)."
+  }
+}
+
+run "grafana_node_port_cannot_collide_with_a_service" {
+  command = plan
+
+  variables {
+    grafana_node_port = 30080
+  }
+
+  expect_failures = [terraform_data.grafana_node_port_free]
+}
+
+run "grafana_node_port_must_be_in_the_nodeport_range" {
+  command = plan
+
+  variables {
+    grafana_node_port = 8080
+  }
+
+  expect_failures = [var.grafana_node_port]
 }

@@ -26,6 +26,31 @@ locals {
   # Servicios con exposición pública (campo `edge` de services.yaml).
   edge_services = { for name, s in module.service_list.services : name => s if s.edge != null }
   edge_enabled  = var.enable_edge && length(local.edge_services) > 0
+
+  # Grafana (observabilidad) entra por el mismo borde que los servicios, bajo /grafana y detrás de su propio login.
+  # Solo existe con borde; el Service NodePort lo crea la etapa baseline.
+  grafana_edge_enabled = local.edge_enabled && var.enable_grafana_edge
+  grafana_edge = local.grafana_edge_enabled ? {
+    "grafana" = { node_port = var.grafana_node_port, path_prefixes = ["/grafana"], high_volume = false }
+  } : {}
+
+  # Todo lo que atraviesa el NLB y el API Gateway: los servicios con `edge` más, si se pide, Grafana.
+  edge_exposed = merge(
+    { for name, s in local.edge_services : name => { node_port = s.edge.node_port, path_prefixes = s.edge.path_prefixes, high_volume = s.edge.high_volume } },
+    local.grafana_edge,
+  )
+}
+
+# El NodePort de Grafana no puede coincidir con el de un servicio: el listener del NLB usa el mismo número.
+resource "terraform_data" "grafana_node_port_free" {
+  count = local.grafana_edge_enabled ? 1 : 0
+
+  lifecycle {
+    precondition {
+      condition     = !contains([for s in local.edge_services : s.edge.node_port], var.grafana_node_port)
+      error_message = "grafana_node_port collides with the NodePort of a service in services.yaml: pick another one."
+    }
+  }
 }
 
 module "service_list" {
@@ -246,7 +271,9 @@ module "nlb" {
   subnet_ids              = module.network.private_subnet_ids
   node_security_group_id  = module.eks.node_security_group_id
   autoscaling_group_names = module.eks.node_autoscaling_group_names
-  services                = { for name, s in local.edge_services : name => { node_port = s.edge.node_port } }
+  services                = { for name, s in local.edge_exposed : name => { node_port = s.node_port } }
+
+  depends_on = [terraform_data.grafana_node_port_free]
 
   tags = local.tags
 }
@@ -260,11 +287,11 @@ module "api_gateway" {
   vpc_cidr   = var.vpc_cidr
   subnet_ids = module.network.private_subnet_ids
   services = {
-    for name, s in local.edge_services : name => {
+    for name, s in local.edge_exposed : name => {
       listener_arn  = module.nlb[0].listener_arns[name]
-      node_port     = s.edge.node_port
-      path_prefixes = s.edge.path_prefixes
-      high_volume   = s.edge.high_volume
+      node_port     = s.node_port
+      path_prefixes = s.path_prefixes
+      high_volume   = s.high_volume
     }
   }
 
@@ -292,6 +319,9 @@ module "cloudfront" {
     for name, s in local.edge_services : "^(${join("|", s.edge.path_prefixes)})(/.*)?$" if s.edge.high_volume
   ])
   high_volume_rate_limit_per_5min = var.edge_high_volume_rate_limit_per_5min
+
+  # Las consultas de Grafana (LogQL, PromQL) parecen inyección al WAF: su ruta queda exenta de SQLi/XSS, no del límite por IP.
+  inspection_exempt_path_regex = local.grafana_edge_enabled ? "^/grafana(/.*)?$" : ""
 
   tags = local.tags
 }

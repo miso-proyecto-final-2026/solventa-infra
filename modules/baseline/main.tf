@@ -18,6 +18,7 @@ module "observability" {
   namespace      = module.addons.monitoring_namespace
   log_namespaces = [module.addons.staging_namespace, module.addons.system_namespace]
 
+  grafana_edge       = var.grafana_edge
   logs_bucket        = var.logs_bucket
   logs_bucket_region = var.logs_bucket_region
 

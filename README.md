@@ -449,7 +449,22 @@ pods (stdout) --API de Kubernetes--> Alloy (1 pod) --> Loki (1 pod) --> bucket S
 - **Grafana no persiste nada**: las fuentes de datos (Loki y el Prometheus del HPA) y los dos dashboards se aprovisionan desde el módulo
   (`modules/observability/dashboards/`). No se publica: se abre con un port-forward.
 
-Abrirlo (con staging encendido y el kubeconfig configurado):
+**Por URL.** Con el borde encendido, Grafana se publica en `<public_url>/grafana/` (`enable_grafana_edge`, `grafana_node_port`, por
+defecto 30090; salida `grafana_url` de `platform`). Entra por el mismo camino que los servicios (CloudFront + WAF → API Gateway →
+NLB → NodePort) y quien conozca la URL ve la pantalla de login: **el acceso es solo con usuario y contraseña**. Conviene saber que:
+
+- La contraseña de `admin` la genera el chart; quien tenga `kubectl` la lee con `scripts/grafana.sh --credenciales`. No hay
+  inicio de sesión anónimo ni registro abierto. Grafana bloquea un usuario tras 5 intentos fallidos y el WAF limita las solicitudes por IP.
+- El WAF sigue activo: solo entran países de `edge_allowed_countries` y rige el límite por IP (`edge_rate_limit_per_5min`, 1000 por 5 min,
+  que un dashboard con varios paneles y auto-refresco no debería alcanzar). La ruta `/grafana` se exime solo de las reglas SQLi/XSS,
+  porque las consultas LogQL/PromQL se confunden con inyección; el límite de cuerpo sigue aplicando.
+- Grafana no persiste nada: los usuarios creados desde la interfaz se pierden si el pod se reinicia. Con una sola cuenta compartida es
+  lo esperado; para cuentas personales haría falta un proveedor externo (p. ej. GitHub OAuth de la organización).
+- Los logs pueden incluir ids de pólizas y clientes: quien tenga la contraseña los ve todos. Si se quiere restringir por IP, es una regla
+  más en el WAF.
+- `platform` se aplica antes que `baseline`: la URL sale del dominio de CloudFront. Para volver a privado, `enable_grafana_edge = false`.
+
+Por port-forward (con staging encendido y el kubeconfig configurado), sigue disponible:
 
 ```sh
 scripts/grafana.sh            # imprime usuario y contraseña y abre http://localhost:3000
