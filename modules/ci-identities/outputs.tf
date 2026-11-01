@@ -17,3 +17,8 @@ output "service_deploy_role_arns" {
   description = "Mapa servicio => ARN del rol de despliegue."
   value       = { for k, r in aws_iam_role.service_deploy : k => r.arn }
 }
+
+output "web_deploy_role_arn" {
+  description = "Rol de despliegue de la consola web; null si no se pidió."
+  value       = var.web_deploy_repository == null ? null : aws_iam_role.web_deploy[0].arn
+}

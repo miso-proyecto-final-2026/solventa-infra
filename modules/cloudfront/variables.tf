@@ -8,6 +8,18 @@ variable "origin_domain" {
   type        = string
 }
 
+variable "enable_web" {
+  description = "Sirve también la consola web (HU39). Falso: todo va al API Gateway. Es aparte del dominio porque ese no se conoce en el plan."
+  type        = bool
+  default     = false
+}
+
+variable "web_origin_domain" {
+  description = "Dominio regional del bucket de la consola web; obligatorio con `enable_web`."
+  type        = string
+  default     = null
+}
+
 variable "allowed_countries" {
   description = "Países de origen permitidos (ISO 3166-1 alfa-2); el resto se bloquea en el WAF."
   type        = list(string)
@@ -34,6 +46,12 @@ variable "high_volume_rate_limit_per_5min" {
   description = "Máximo de solicitudes por IP en 5 minutos en las rutas de alto volumen antes de responder 429."
   type        = number
   default     = 600000
+}
+
+variable "extra_api_path_patterns" {
+  description = "Rutas (patrón de CloudFront) que también van al API Gateway sin caché cuando la consola web es el origen por defecto. Para Grafana (/grafana*)."
+  type        = list(string)
+  default     = []
 }
 
 variable "inspection_exempt_path_regex" {

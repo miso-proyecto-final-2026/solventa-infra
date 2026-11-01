@@ -189,12 +189,12 @@ run "edge_follows_the_architecture_path" {
   }
 
   assert {
-    condition     = length(module.nlb[0].listener_arns) == 6
-    error_message = "RULE edge-services: the five services with `edge` and Grafana must be exposed through the NLB."
+    condition     = length(module.nlb[0].listener_arns) == 7
+    error_message = "RULE edge-services: the six services with `edge` (backend, identidad, suscripcion, siniestros, pagos, notificaciones) and Grafana must be exposed through the NLB."
   }
 
   assert {
-    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad", "solventa-suscripcion", "solventa-siniestros", "solventa-pagos"] : contains(keys(module.nlb[0].listener_arns), k)])
+    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad", "solventa-suscripcion", "solventa-siniestros", "solventa-pagos", "solventa-notificaciones"] : contains(keys(module.nlb[0].listener_arns), k)])
     error_message = "RULE edge-wiring: each exposed service must have its own NLB listener."
   }
 }
@@ -377,4 +377,68 @@ run "grafana_node_port_must_be_in_the_nodeport_range" {
   }
 
   expect_failures = [var.grafana_node_port]
+}
+
+# HU22: el remitente de SES es opcional. Sin él no se crea nada y MS Notificaciones usa el correo simulado.
+run "ses_sender_is_optional_and_off_by_default" {
+  command = plan
+
+  variables {
+    cluster_admin_principal_arns = ["arn:aws:iam::123456789012:user/operador"]
+  }
+
+  assert {
+    condition     = length(module.ses_notificaciones) == 0 && output.correo_remitente == null
+    error_message = "HU22: without correo_remitente there is no SES identity and the mail stays simulated."
+  }
+}
+
+run "ses_sender_is_created_with_the_event_bus_and_attaches_to_the_notifications_role" {
+  command = plan
+
+  variables {
+    cluster_admin_principal_arns = ["arn:aws:iam::123456789012:user/operador"]
+    correo_remitente             = "notificaciones@solventa.example"
+  }
+
+  assert {
+    condition     = length(module.ses_notificaciones) == 1 && output.correo_remitente == "notificaciones@solventa.example"
+    error_message = "HU22: the SES identity is created for the sender."
+  }
+
+  assert {
+    condition     = module.msk[0].client_role_names["solventa-notificaciones"] == "solventa-staging-solventa-notificaciones-eventos"
+    error_message = "HU22: the SES permission is attached to the MSK role of solventa-notificaciones (one Pod Identity association per service account)."
+  }
+
+  assert {
+    condition     = module.ses_notificaciones[0].identity_arn == "arn:aws:ses:us-east-1:123456789012:identity/notificaciones@solventa.example"
+    error_message = "HU22: sending is limited to the sender identity."
+  }
+}
+
+run "ses_sender_needs_the_event_bus" {
+  command = plan
+
+  variables {
+    cluster_admin_principal_arns = ["arn:aws:iam::123456789012:user/operador"]
+    correo_remitente             = "notificaciones@solventa.example"
+    enable_events                = false
+  }
+
+  assert {
+    condition     = length(module.ses_notificaciones) == 0 && output.correo_remitente == null
+    error_message = "HU22: without the event bus there is no MSK role to attach the SES permission to."
+  }
+}
+
+run "sender_must_be_an_email_address" {
+  command = plan
+
+  variables {
+    cluster_admin_principal_arns = ["arn:aws:iam::123456789012:user/operador"]
+    correo_remitente             = "no-es-un-correo"
+  }
+
+  expect_failures = [var.correo_remitente]
 }

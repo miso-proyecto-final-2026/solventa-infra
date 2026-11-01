@@ -87,6 +87,7 @@ module "ci_identities" {
   infra_repository            = var.infra_repository
   github_ids                  = var.github_ids
   deploy_repositories         = { for name, s in module.service_list.services : name => s.deploy_repository }
+  web_deploy_repository       = var.web_repository
   create_github_oidc_provider = var.create_github_oidc_provider
   state_bucket_name           = aws_s3_bucket.state.bucket
   cluster_name                = var.cluster_name

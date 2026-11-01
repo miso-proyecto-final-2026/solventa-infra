@@ -1,0 +1,13 @@
+# rule: RULE least-privilege
+# tests: modules/evidence-bucket
+--- a/modules/evidence-bucket/main.tf
++++ b/modules/evidence-bucket/main.tf
+@@ -159,7 +159,7 @@
+       var.list_access ? [{
+         Effect   = "Allow"
+         Action   = ["s3:ListBucket"]
+-        Resource = local.bucket_arn
++        Resource = "*"
+       }] : [],
+     )
+   })

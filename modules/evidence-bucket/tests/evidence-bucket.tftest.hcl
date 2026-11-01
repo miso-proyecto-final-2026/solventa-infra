@@ -164,6 +164,78 @@ run "existing_role_gets_the_policy_without_a_new_role_or_association" {
   }
 }
 
+# HU21: las pólizas firmadas se guardan en firmadas/ y el servicio relee los PDF para comprobar su hash y entregarlos.
+run "signed_policies_add_a_write_prefix_and_read_access_limited_to_the_same_prefixes" {
+  command = plan
+
+  variables {
+    bucket_name          = "solventa-staging-polizas-123456789012"
+    prefix               = "polizas/"
+    extra_write_prefixes = ["firmadas/"]
+    read_access          = true
+    existing_role_name   = "solventa-staging-solventa-suscripcion-eventos"
+    policy_name          = "documentos-polizas"
+  }
+
+  assert {
+    condition     = toset(flatten([for st in jsondecode(aws_iam_role_policy.writer.policy).Statement : [for a in tolist(st.Action) : a]])) == toset(["s3:PutObject", "s3:GetObject"])
+    error_message = "RULE least-privilege: the role may only PutObject and GetObject (no delete, no list, no wildcard)."
+  }
+
+  assert {
+    condition = alltrue([
+      for st in jsondecode(aws_iam_role_policy.writer.policy).Statement :
+      alltrue([for r in flatten([st.Resource]) : endswith(r, "/polizas/*") || endswith(r, "/firmadas/*")])
+    ])
+    error_message = "RULE least-privilege: every statement must be limited to polizas/ or firmadas/."
+  }
+
+  assert {
+    condition = toset(flatten([
+      for st in jsondecode(aws_iam_role_policy.writer.policy).Statement :
+      [for r in flatten([st.Resource]) : r if contains(tolist(st.Action), "s3:GetObject")]
+    ])) == toset(["arn:aws:s3:::solventa-staging-polizas-123456789012/polizas/*", "arn:aws:s3:::solventa-staging-polizas-123456789012/firmadas/*"])
+    error_message = "Reads must cover exactly the write prefixes."
+  }
+
+  assert {
+    condition = toset(flatten([
+      for st in jsondecode(aws_iam_role_policy.writer.policy).Statement :
+      [for r in flatten([st.Resource]) : r if contains(tolist(st.Action), "s3:PutObject")]
+    ])) == toset(["arn:aws:s3:::solventa-staging-polizas-123456789012/polizas/*", "arn:aws:s3:::solventa-staging-polizas-123456789012/firmadas/*"])
+    error_message = "Writes must cover exactly polizas/ and firmadas/."
+  }
+}
+
+run "kyc_bucket_stays_write_only_without_read_access" {
+  command = plan
+
+  assert {
+    condition     = !can(regex("GetObject", aws_iam_role_policy.writer.policy))
+    error_message = "RULE least-privilege: the KYC role must never read evidence (read_access defaults to false)."
+  }
+}
+
+run "extra_write_prefix_cannot_be_the_whole_bucket" {
+  command = plan
+
+  variables {
+    extra_write_prefixes = ["/"]
+  }
+
+  expect_failures = [var.extra_write_prefixes]
+}
+
+run "extra_write_prefix_must_be_a_folder" {
+  command = plan
+
+  variables {
+    extra_write_prefixes = ["firmadas"]
+  }
+
+  expect_failures = [var.extra_write_prefixes]
+}
+
 run "retention_days_must_be_null_or_positive" {
   command = plan
 
@@ -172,4 +244,41 @@ run "retention_days_must_be_null_or_positive" {
   }
 
   expect_failures = [var.retention_days]
+}
+
+run "listing_is_opt_in_and_limited_to_the_bucket_itself" {
+  command = plan
+
+  variables {
+    bucket_name          = "solventa-staging-polizas-123456789012"
+    prefix               = "polizas/"
+    extra_write_prefixes = ["certificados/"]
+    read_access          = true
+    list_access          = true
+    existing_role_name   = "solventa-staging-solventa-suscripcion-eventos"
+    policy_name          = "documentos-polizas"
+  }
+
+  # Sin ListBucket, leer una clave inexistente da 403 y el servicio no distingue «no hay copia» de «sin permiso».
+  assert {
+    condition = toset(flatten([
+      for st in jsondecode(aws_iam_role_policy.writer.policy).Statement :
+      [for r in flatten([st.Resource]) : r if contains(tolist(st.Action), "s3:ListBucket")]
+    ])) == toset(["arn:aws:s3:::solventa-staging-polizas-123456789012"])
+    error_message = "RULE least-privilege: listing must be granted on this bucket only, never a wildcard or object path."
+  }
+
+  assert {
+    condition     = toset(flatten([for st in jsondecode(aws_iam_role_policy.writer.policy).Statement : [for a in tolist(st.Action) : a]])) == toset(["s3:PutObject", "s3:GetObject", "s3:ListBucket"])
+    error_message = "RULE least-privilege: with list_access the role may only Put, Get and List (no delete, no wildcard)."
+  }
+}
+
+run "listing_is_never_granted_by_default" {
+  command = plan
+
+  assert {
+    condition     = !can(regex("ListBucket", aws_iam_role_policy.writer.policy))
+    error_message = "RULE least-privilege: list_access defaults to false, so the KYC role never lists."
+  }
 }

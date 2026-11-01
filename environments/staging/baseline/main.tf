@@ -23,6 +23,9 @@ module "service_list" {
 
 locals {
   # Valores que salen de la plataforma (no se conocen al escribir services.yaml).
+  # Remitente verificado en SES (HU22): con él, MS Notificaciones envía el correo de verdad; sin él, el correo es simulado.
+  correo_remitente = try(local.platform.correo_remitente, null)
+
   platform_settings = {
     "solventa-identidad" = {
       KYC_EVIDENCIAS_BUCKET = local.platform.kyc_evidencias_bucket
@@ -32,6 +35,15 @@ locals {
     "solventa-suscripcion" = {
       for k, v in {
         POLIZAS_BUCKET     = try(local.platform.polizas_bucket, null)
+        AWS_DEFAULT_REGION = local.platform.region
+      } : k => v if v != null
+    }
+    # HU22: la base de los enlaces del correo es el borde público (CloudFront) y el proveedor depende de si hay remitente.
+    "solventa-notificaciones" = {
+      for k, v in {
+        URL_PUBLICA        = try(local.platform.public_url, null)
+        CORREO_PROVEEDOR   = local.correo_remitente == null ? "simulado" : "ses"
+        CORREO_REMITENTE   = local.correo_remitente
         AWS_DEFAULT_REGION = local.platform.region
       } : k => v if v != null
     }

@@ -1,0 +1,15 @@
+# rule: RULE web-bucket-private (la consola web solo se lee por CloudFront, HU39)
+# tests: modules/web-hosting
+--- a/modules/web-hosting/main.tf
++++ b/modules/web-hosting/main.tf
+@@ -11,9 +11,9 @@
+ resource "aws_s3_bucket_public_access_block" "this" {
+   bucket = aws_s3_bucket.this.id
+
+-  block_public_acls       = true
+-  block_public_policy     = true
++  block_public_acls       = false
++  block_public_policy     = false
+   ignore_public_acls      = true
+   restrict_public_buckets = true
+ }

@@ -175,3 +175,91 @@ run "grafana_path_is_exempt_from_inspection_only" {
     error_message = "RULE waf-inspection: the body size limit still applies to the extra path (only the identity upload is exempt)."
   }
 }
+
+run "without_web_everything_goes_to_the_api" {
+  command = plan
+
+  assert {
+    condition     = aws_cloudfront_distribution.this.default_cache_behavior[0].target_origin_id == "api-gateway"
+    error_message = "RULE edge-api-default: without the web console the default behavior must reach the API Gateway."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.this.ordered_cache_behavior) == 0
+    error_message = "RULE edge-api-default: without the web console there are no extra behaviors."
+  }
+}
+
+run "web_console_keeps_the_api_uncached_and_unchanged_for_mobile" {
+  command = plan
+
+  variables {
+    enable_web        = true
+    web_origin_domain = "solventa-staging-web-123.s3.us-east-1.amazonaws.com"
+  }
+
+  assert {
+    condition     = aws_cloudfront_distribution.this.default_cache_behavior[0].target_origin_id == "web"
+    error_message = "RULE edge-web-default: with the web console the default behavior must reach the bucket."
+  }
+
+  assert {
+    condition     = toset(aws_cloudfront_distribution.this.default_cache_behavior[0].allowed_methods) == toset(["GET", "HEAD"])
+    error_message = "RULE edge-web-readonly: the bucket origin must only accept reads."
+  }
+
+  assert {
+    condition = alltrue([
+      for b in aws_cloudfront_distribution.this.ordered_cache_behavior :
+      b.target_origin_id == "api-gateway" && b.cache_policy_id == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    ])
+    error_message = "RULE edge-api-no-cache: API behaviors must reach the API Gateway without caching."
+  }
+
+  assert {
+    condition     = toset([for b in aws_cloudfront_distribution.this.ordered_cache_behavior : b.path_pattern]) == toset(["/v1/*", "/api/*"])
+    error_message = "RULE edge-api-paths: the API must stay under /v1/* (mobile) and /api/* (web console)."
+  }
+
+  assert {
+    condition = alltrue([
+      for b in aws_cloudfront_distribution.this.ordered_cache_behavior :
+      b.path_pattern != "/v1/*" || length(b.function_association) == 0
+    ])
+    error_message = "RULE edge-mobile-unchanged: /v1/* must not be rewritten."
+  }
+
+  assert {
+    condition     = aws_cloudfront_origin_access_control.web[0].signing_behavior == "always"
+    error_message = "RULE edge-web-oac: CloudFront must sign its reads of the web bucket."
+  }
+}
+
+# Con la consola web el origen por defecto es el bucket: Grafana necesita su propia ruta hacia el API Gateway, sin caché.
+run "grafana_path_reaches_the_api_gateway_when_the_web_console_is_the_default" {
+  command = plan
+
+  variables {
+    enable_web                   = true
+    web_origin_domain            = "solventa-staging-web-123.s3.us-east-1.amazonaws.com"
+    extra_api_path_patterns      = ["/grafana*"]
+    inspection_exempt_path_regex = "^/grafana(/.*)?$"
+  }
+
+  assert {
+    condition     = toset([for b in aws_cloudfront_distribution.this.ordered_cache_behavior : b.path_pattern]) == toset(["/v1/*", "/api/*", "/grafana*"])
+    error_message = "RULE grafana-edge: /grafana* gets its own behavior next to /v1/* and /api/*."
+  }
+
+  assert {
+    condition = alltrue([
+      for b in aws_cloudfront_distribution.this.ordered_cache_behavior :
+      b.path_pattern != "/grafana*" || (
+        b.target_origin_id == "api-gateway" &&
+        b.cache_policy_id == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" &&
+        toset(b.allowed_methods) == toset(["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"])
+      )
+    ])
+    error_message = "RULE grafana-edge: Grafana reaches the API Gateway uncached and accepts logins (POST)."
+  }
+}

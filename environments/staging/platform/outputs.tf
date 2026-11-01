@@ -90,6 +90,16 @@ output "logs_bucket" {
   value       = one(module.logs_loki[*].bucket_name)
 }
 
+output "web_bucket_name" {
+  description = "Bucket de la consola web (variable WEB_BUCKET en solventa-web); null si el borde está desactivado."
+  value       = local.edge_enabled ? module.web_hosting[0].bucket_name : null
+}
+
+output "cloudfront_distribution_id" {
+  description = "Distribución del borde (variable WEB_DISTRIBUTION_ID en solventa-web); null si el borde está desactivado."
+  value       = local.edge_enabled ? module.cloudfront[0].distribution_id : null
+}
+
 output "public_url" {
   description = "URL pública del borde (CloudFront); null si el borde está desactivado."
   value       = local.edge_enabled ? module.cloudfront[0].url : null
@@ -123,4 +133,9 @@ output "kafka_bootstrap_brokers" {
 output "kafka_cluster_arn" {
   description = "ARN del clúster MSK; null si enable_events es false."
   value       = one(module.msk[*].cluster_arn)
+}
+
+output "correo_remitente" {
+  description = "Remitente del correo de MS Notificaciones (HU22), o null si no hay identidad de SES y el correo es simulado."
+  value       = one(module.ses_notificaciones[*].sender_email)
 }

@@ -321,7 +321,14 @@ curl -s -H "X-Service-Key: $KEY" localhost:8005/v1/pagos/transacciones/<id>     
 
 En Postman: `pagos_url` = `http://localhost:8005` y la clave como valor actual de `pagos_key` mientras dure el túnel.
 
+**MS Notificaciones (HU22)** confirma al cliente cuando su póliza queda emitida: un correo con los detalles y el enlace de descarga del certificado, y una notificación push de alta prioridad. Esquema propio `notificaciones` y NodePort 30085, con `/v1/dispositivos` y `/v1/notificaciones` en el borde (la sesión del cliente la valida Identidad; la lista de envíos fallidos exige el JWT de un operador, `ASESOR_JWT_SECRETO`). Consume `poliza_emitida` en el grupo `solventa-notificaciones.polizas` y reentrega lo que no puede procesar a `solventa.polizas.ciclovida.dlq`; no publica eventos. Necesita `enable_events = true`. Al agregarlo, `bootstrap` crea su rol de despliegue y su repositorio de imágenes: actualice `AWS_DEPLOY_ROLE_ARNS` en el backend antes del primer `cicd/deploy-staging`. Los enlaces del certificado los emite MS Suscripción: `/v1/certificados` sale por el borde (la descarga con el enlace firmado y con vencimiento) y `/v1/interno` queda interno (`internal_path_prefixes`). Las claves nacen aleatorias en Secrets Manager: `suscripcion-service-key` (la comparten Suscripción y Notificaciones) y `certificados-clave-enlaces` (firma los enlaces). El certificado se guarda en `certificados/` del bucket de pólizas.
+
+- **Correo real con Amazon SES (opcional).** Con `correo_remitente = "<dirección>"` en `platform`, el módulo `ses-sender` crea la identidad de SES y adjunta a ese servicio el permiso `ses:SendEmail` limitado a ella (rol de MSK del servicio). AWS manda un enlace de confirmación a esa dirección: **alguien debe abrirlo** antes del primer envío. La cuenta de SES está en *sandbox*: solo envía a destinatarios que también estén verificados (por ejemplo, verifique su propia dirección y use cuentas de prueba con ese correo). `baseline` entrega `CORREO_PROVEEDOR=ses`, `CORREO_REMITENTE` y `URL_PUBLICA` (el CloudFront, para los enlaces). Sin `correo_remitente` el correo es el simulado y no sale ninguno. Se comprueba con `aws ses get-identity-verification-attributes --identities <dirección>` (`Success`).
+- **Push simulado:** el servicio deja el mensaje en una bandeja que la app consulta; no usa SNS ni Firebase.
+
 ## Borde público
+
+**Consola web (HU39).** La misma distribución sirve `solventa-web`: `/v1/*` sigue yendo al API Gateway sin cambios (móvil y proveedores), `/api/<servicio>/v1/*` va al API Gateway sin el prefijo y el resto sale del bucket privado `solventa-staging-web-<cuenta>` (módulo `web-hosting`), que solo lee CloudFront. Las rutas sin idioma redirigen a `/es-CO/`. Para desplegar, en `solventa-web`: crear el environment `staging`, definir las variables `AWS_WEB_DEPLOY_ROLE_ARN` (salida `web_deploy_role_arn` de `bootstrap`), `WEB_BUCKET` y `WEB_DISTRIBUTION_ID` (salidas de `platform`), y comentar `cicd/deploy-staging` en un PR.
 
 Implementa la ruta de entrada del documento de arquitectura: **cliente → CloudFront (TLS) + WAF → API Gateway → NLB interno → NodePort de cada servicio**. Se crea en la etapa `platform` (variable `enable_edge`, activa por defecto) y lo crea todo Terraform: el clúster no crea balanceadores, así que el destroy no deja ninguno huérfano.
 
@@ -507,10 +514,13 @@ Notas:
   cosas: los objetos **no expiran** (`retention_days = null`: son documentos contractuales), las versiones antiguas se
   conservan 30 días (`noncurrent_days`) y **no crea rol ni asociación de Pod Identity**: EKS admite una sola asociación por
   cuenta de servicio y `solventa-suscripcion` ya tiene la de MSK, así que `existing_role_name` adjunta a ese rol una política
-  `write-polizas` con `s3:PutObject` solo bajo `polizas/`. Por eso el bucket se crea junto con el bus de eventos
+  `documentos-polizas` con `s3:PutObject` solo bajo `polizas/` y `firmadas/` y `s3:GetObject` sobre esos mismos dos prefijos
+  (HU21: el servicio relee el PDF para comprobar su hash, guarda la copia firmada y la entrega; sin `s3:ListBucket`, `s3:Delete*`
+  ni comodines). Se pide con `extra_write_prefixes` y `read_access`, que por defecto no conceden nada: el bucket de KYC sigue
+  siendo solo de escritura. Por eso el bucket se crea junto con el bus de eventos
   (`enable_events = true`; sin él, `polizas_bucket` es `null` y Suscripción solo puede usar la carpeta local en desarrollo).
   El baseline entrega `POLIZAS_BUCKET` y `AWS_DEFAULT_REGION`, y `services.yaml` permite a Suscripción publicar
-  `solventa.polizas.ciclovida` y suma `/v1/polizas` a su borde. No hay permiso de lectura: la descarga es de HU22. Como el de
+  `solventa.polizas.ciclovida` y suma `/v1/polizas` a su borde. La entrega al cliente es de HU22. Como el de
   KYC, se crea con `force_destroy` en staging. En producción la retención está por definir. **Migración del estado:** al
   añadir `count` al rol y a la asociación del módulo, bloques `moved` los trasladan en el estado; el plan del bucket de KYC
   no debe mostrar destrucciones.

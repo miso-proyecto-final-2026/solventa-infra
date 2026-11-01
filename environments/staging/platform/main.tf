@@ -123,8 +123,8 @@ resource "terraform_data" "require_identidad" {
   }
 }
 
-# Documentos de póliza de MS Suscripción (HU20): segunda instancia del módulo. El permiso de escritura (solo PutObject bajo
-# polizas/) se adjunta al rol de MSK de Suscripción, porque EKS admite una sola asociación de Pod Identity por cuenta de
+# Documentos de póliza de MS Suscripción (HU20, HU21): segunda instancia del módulo. El permiso (PutObject bajo polizas/ y
+# firmadas/, GetObject sobre ambos) se adjunta al rol de MSK de Suscripción, porque EKS admite una sola asociación de Pod Identity por cuenta de
 # servicio. Los objetos no expiran (las pólizas son documentos contractuales) y las versiones antiguas se conservan 30 días.
 module "polizas_documentos" {
   count  = var.enable_events ? 1 : 0
@@ -135,9 +135,15 @@ module "polizas_documentos" {
   service_account    = "solventa-suscripcion"
   prefix             = "polizas/"
   existing_role_name = module.msk[0].client_role_names["solventa-suscripcion"]
-  policy_name        = "write-polizas"
-  retention_days     = null
-  noncurrent_days    = 30
+  policy_name        = "documentos-polizas"
+  # HU21: la copia firmada se guarda en firmadas/ y el servicio relee ambos PDF (comprueba el hash y los entrega).
+  # HU22: el certificado de cobertura se guarda en certificados/ y se entrega al titular o por un enlace firmado.
+  extra_write_prefixes = ["firmadas/", "certificados/"]
+  read_access          = true
+  # El certificado se genera la primera vez que se pide: leerlo antes debe dar «no existe» (404), no «sin permiso» (403).
+  list_access     = true
+  retention_days  = null
+  noncurrent_days = 30
   # Staging bajo demanda: solo guarda documentos sintéticos y se destruye tras cada sesión.
   force_destroy = true
 
@@ -310,6 +316,8 @@ module "cloudfront" {
 
   name              = local.cluster_name
   origin_domain     = module.api_gateway[0].domain_name
+  enable_web        = true
+  web_origin_domain = module.web_hosting[0].regional_domain_name
   allowed_countries = var.edge_allowed_countries
 
   rate_limit_per_5min = var.edge_rate_limit_per_5min
@@ -323,5 +331,32 @@ module "cloudfront" {
   # Las consultas de Grafana (LogQL, PromQL) parecen inyección al WAF: su ruta queda exenta de SQLi/XSS, no del límite por IP.
   inspection_exempt_path_regex = local.grafana_edge_enabled ? "^/grafana(/.*)?$" : ""
 
+  # Con la consola web, el origen por defecto es el bucket: /grafana* debe ir al API Gateway sin caché.
+  extra_api_path_patterns = local.grafana_edge_enabled ? ["/grafana*"] : []
+
   tags = local.tags
+}
+
+# Consola web (HU39): archivos estáticos detrás de la misma distribución, con su WAF. El bucket solo lo lee CloudFront.
+module "web_hosting" {
+  source = "../../../modules/web-hosting"
+  count  = local.edge_enabled ? 1 : 0
+
+  bucket_name      = "solventa-${var.name}-web-${local.account_id}"
+  distribution_arn = module.cloudfront[0].distribution_arn
+
+  tags = local.tags
+}
+
+# Remitente del correo de MS Notificaciones (HU22): identidad de Amazon SES y permiso mínimo para enviar con ella. El permiso
+# se adjunta al rol de MSK del servicio (EKS admite una sola asociación de Pod Identity por cuenta de servicio). Sin
+# correo_remitente no se crea nada y el servicio usa el correo simulado.
+module "ses_notificaciones" {
+  count  = var.enable_events && var.correo_remitente != null ? 1 : 0
+  source = "../../../modules/ses-sender"
+
+  sender_email = var.correo_remitente
+  role_name    = module.msk[0].client_role_names["solventa-notificaciones"]
+  region       = var.region
+  account_id   = local.account_id
 }
