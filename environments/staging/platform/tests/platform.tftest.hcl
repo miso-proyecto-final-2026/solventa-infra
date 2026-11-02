@@ -189,12 +189,12 @@ run "edge_follows_the_architecture_path" {
   }
 
   assert {
-    condition     = length(module.nlb[0].listener_arns) == 7
-    error_message = "RULE edge-services: the six services with `edge` (backend, identidad, suscripcion, siniestros, pagos, notificaciones) and Grafana must be exposed through the NLB."
+    condition     = length(module.nlb[0].listener_arns) == 8
+    error_message = "RULE edge-services: the seven services with `edge` (backend, identidad, suscripcion, siniestros, pagos, notificaciones and perfilamiento, which is temporary: see the TODO in services.yaml) and Grafana must be exposed through the NLB."
   }
 
   assert {
-    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad", "solventa-suscripcion", "solventa-siniestros", "solventa-pagos", "solventa-notificaciones"] : contains(keys(module.nlb[0].listener_arns), k)])
+    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad", "solventa-suscripcion", "solventa-siniestros", "solventa-pagos", "solventa-notificaciones", "solventa-perfilamiento"] : contains(keys(module.nlb[0].listener_arns), k)])
     error_message = "RULE edge-wiring: each exposed service must have its own NLB listener."
   }
 }
