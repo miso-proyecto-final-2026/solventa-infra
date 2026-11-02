@@ -67,6 +67,21 @@ variable "log_retention_days" {
   default     = 14
 }
 
+variable "enhanced_monitoring" {
+  description = <<-EOT
+    Nivel de métricas de MSK en CloudWatch. PER_TOPIC_PER_BROKER da mensajes y bytes por topic; PER_TOPIC_PER_PARTITION añade
+    el desfase (lag) de cada grupo de consumo por topic. DEFAULT y PER_BROKER no desglosan por topic. Los niveles por topic
+    cuestan como métricas de CloudWatch (centavos en staging, con pocos topics).
+  EOT
+  type        = string
+  default     = "PER_TOPIC_PER_PARTITION"
+
+  validation {
+    condition     = contains(["DEFAULT", "PER_BROKER", "PER_TOPIC_PER_BROKER", "PER_TOPIC_PER_PARTITION"], var.enhanced_monitoring)
+    error_message = "enhanced_monitoring must be DEFAULT, PER_BROKER, PER_TOPIC_PER_BROKER or PER_TOPIC_PER_PARTITION."
+  }
+}
+
 variable "access" {
   description = <<-EOT
     Permisos mínimos por servicio sobre el bus. La clave es el nombre del servicio (también el prefijo de sus grupos de

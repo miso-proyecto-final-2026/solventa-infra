@@ -85,6 +85,11 @@ output "polizas_bucket" {
   value       = var.enable_events ? module.polizas_documentos[0].bucket_name : null
 }
 
+output "logs_bucket" {
+  description = "Bucket S3 de logs de Loki (solo referencia); null si enable_logs_storage es false."
+  value       = one(module.logs_loki[*].bucket_name)
+}
+
 output "web_bucket_name" {
   description = "Bucket de la consola web (variable WEB_BUCKET en solventa-web); null si el borde está desactivado."
   value       = local.edge_enabled ? module.web_hosting[0].bucket_name : null
@@ -98,6 +103,21 @@ output "cloudfront_distribution_id" {
 output "public_url" {
   description = "URL pública del borde (CloudFront); null si el borde está desactivado."
   value       = local.edge_enabled ? module.cloudfront[0].url : null
+}
+
+output "grafana_cloudwatch_role_arn" {
+  description = "Rol de Pod Identity con el que Grafana lee CloudWatch (solo referencia); null si enable_grafana_cloudwatch es false."
+  value       = one(module.grafana_cloudwatch[*].role_arn)
+}
+
+output "grafana_node_port" {
+  description = "NodePort por el que el borde alcanza a Grafana; null si Grafana no se publica."
+  value       = local.grafana_edge_enabled ? var.grafana_node_port : null
+}
+
+output "grafana_url" {
+  description = "URL de Grafana (login propio); null si Grafana no se publica por el borde."
+  value       = local.grafana_edge_enabled ? "${module.cloudfront[0].url}/grafana/" : null
 }
 
 output "api_gateway_endpoint" {

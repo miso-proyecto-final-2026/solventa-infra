@@ -189,8 +189,8 @@ run "edge_follows_the_architecture_path" {
   }
 
   assert {
-    condition     = length(module.nlb[0].listener_arns) == 7
-    error_message = "RULE edge-services: solventa-backend, solventa-identidad, solventa-suscripcion, solventa-siniestros, solventa-pagos, solventa-notificaciones and solventa-perfilamiento (temporary, see TODO in services.yaml) must be exposed through the NLB."
+    condition     = length(module.nlb[0].listener_arns) == 8
+    error_message = "RULE edge-services: the seven services with `edge` (backend, identidad, suscripcion, siniestros, pagos, notificaciones and perfilamiento, which is temporary: see the TODO in services.yaml) and Grafana must be exposed through the NLB."
   }
 
   assert {
@@ -296,6 +296,110 @@ run "event_bus_off_creates_nothing" {
     condition     = length(module.polizas_documentos) == 0 && output.polizas_bucket == null
     error_message = "HU20: without the event bus there is no MSK role to attach to, so no policy documents bucket."
   }
+}
+
+# Logs de Loki en S3: bucket de la plataforma, sin segundo rol compartido (Loki tiene su propia cuenta de servicio).
+run "logs_bucket_is_part_of_the_platform_and_can_be_switched_off" {
+  command = plan
+
+  assert {
+    condition     = length(module.logs_loki) == 1 && module.logs_loki[0].bucket_name == "solventa-staging-logs-123456789012"
+    error_message = "RULE logs-s3: the platform creates the logs bucket for Loki."
+  }
+
+  assert {
+    condition     = output.logs_bucket == "solventa-staging-logs-123456789012"
+    error_message = "RULE logs-s3: the baseline reads the bucket name from the platform output."
+  }
+}
+
+run "logs_bucket_off_creates_nothing" {
+  command = plan
+
+  variables {
+    enable_logs_storage = false
+  }
+
+  assert {
+    condition     = length(module.logs_loki) == 0 && output.logs_bucket == null
+    error_message = "RULE logs-s3: without enable_logs_storage no bucket or role exists and the output is null."
+  }
+}
+
+# Grafana lee las métricas de MSK por topic desde CloudWatch: rol de solo lectura por Pod Identity, apagable.
+run "grafana_reads_cloudwatch_and_it_can_be_switched_off" {
+  command = plan
+
+  assert {
+    condition     = length(module.grafana_cloudwatch) == 1
+    error_message = "RULE grafana-cloudwatch: the platform gives Grafana a CloudWatch read role (its ARN is published for the baseline)."
+  }
+}
+
+run "grafana_cloudwatch_off_creates_nothing" {
+  command = plan
+
+  variables {
+    enable_grafana_cloudwatch = false
+  }
+
+  assert {
+    condition     = length(module.grafana_cloudwatch) == 0 && output.grafana_cloudwatch_role_arn == null
+    error_message = "RULE grafana-cloudwatch: without enable_grafana_cloudwatch no role exists and the output is null."
+  }
+}
+
+# Grafana entra por el mismo borde que los servicios, bajo /grafana y con su propio login.
+run "grafana_is_published_through_the_edge" {
+  command = plan
+
+  assert {
+    condition     = contains(keys(module.nlb[0].listener_arns), "grafana") && output.grafana_node_port == 30090
+    error_message = "RULE grafana-edge: Grafana gets an NLB listener on its NodePort and the baseline reads that port."
+  }
+
+  assert {
+    condition     = !contains([for s in local.edge_services : s.edge.node_port], var.grafana_node_port)
+    error_message = "RULE grafana-edge: Grafana's NodePort must not collide with a service's."
+  }
+
+  assert {
+    condition     = local.grafana_edge["grafana"].path_prefixes == ["/grafana"] && !local.grafana_edge["grafana"].high_volume
+    error_message = "RULE grafana-edge: Grafana is routed under /grafana and is not a high-volume route."
+  }
+}
+
+run "grafana_is_not_published_when_switched_off" {
+  command = plan
+
+  variables {
+    enable_grafana_edge = false
+  }
+
+  assert {
+    condition     = !contains(keys(module.nlb[0].listener_arns), "grafana") && output.grafana_node_port == null && output.grafana_url == null
+    error_message = "RULE grafana-edge: without enable_grafana_edge Grafana stays private (port-forward)."
+  }
+}
+
+run "grafana_node_port_cannot_collide_with_a_service" {
+  command = plan
+
+  variables {
+    grafana_node_port = 30080
+  }
+
+  expect_failures = [terraform_data.grafana_node_port_free]
+}
+
+run "grafana_node_port_must_be_in_the_nodeport_range" {
+  command = plan
+
+  variables {
+    grafana_node_port = 8080
+  }
+
+  expect_failures = [var.grafana_node_port]
 }
 
 # HU22: el remitente de SES es opcional. Sin él no se crea nada y MS Notificaciones usa el correo simulado.

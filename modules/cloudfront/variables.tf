@@ -48,6 +48,22 @@ variable "high_volume_rate_limit_per_5min" {
   default     = 600000
 }
 
+variable "extra_api_path_patterns" {
+  description = "Rutas (patrón de CloudFront) que también van al API Gateway sin caché cuando la consola web es el origen por defecto. Para Grafana (/grafana*)."
+  type        = list(string)
+  default     = []
+}
+
+variable "inspection_exempt_path_regex" {
+  description = <<-EOT
+    Ruta (regex sobre uri_path) exenta solo de la inspección SQLi/XSS, pero no del límite de cuerpo. Es para Grafana: sus
+    consultas (LogQL, PromQL) llevan comillas, llaves y operadores que el WAF confunde con inyección. Está detrás del login de
+    Grafana. Vacío = no hay exención adicional.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "exempt_body_path_regex" {
   description = <<-EOT
     Ruta (regex sobre uri_path) exenta del límite de cuerpo y de la inspección del contenido (SQLi/XSS en body).

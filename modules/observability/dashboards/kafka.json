@@ -1,0 +1,685 @@
+{
+  "title": "Kafka por topic",
+  "uid": "solventa-kafka",
+  "tags": [
+    "solventa",
+    "kafka"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "1m",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "description": "Eventos de Kafka (MSK) por topic: mensajes y bytes por segundo, y desfase de cada grupo de consumo. Las métricas llegan de CloudWatch con 1 a 5 minutos de retraso; un topic sin tráfico no aparece.",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Solventa",
+      "tags": [
+        "solventa"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "cluster",
+        "label": "Clúster",
+        "type": "query",
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cloudwatch"
+        },
+        "query": "dimension_values(default,AWS/Kafka,BytesInPerSec,Cluster Name)",
+        "refresh": 2,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1,
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        }
+      },
+      {
+        "name": "topic",
+        "label": "Topic",
+        "type": "query",
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cloudwatch"
+        },
+        "query": "dimension_values(default,AWS/Kafka,BytesInPerSec,Topic)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "group",
+        "label": "Grupo de consumo",
+        "type": "query",
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cloudwatch"
+        },
+        "query": "dimension_values(default,AWS/Kafka,MaxOffsetLag,Consumer Group)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Particiones sin réplica suficiente",
+      "description": "Debe ser 0: un valor mayor indica que un broker no está al día.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT MAX(UnderReplicatedPartitions) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster'",
+          "region": "default",
+          "id": "",
+          "label": "UnderReplicatedPartitions",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Particiones fuera de línea",
+      "description": "Debe ser 0: son particiones sin líder, no se puede leer ni escribir en ellas.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT MAX(OfflinePartitionsCount) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster'",
+          "region": "default",
+          "id": "",
+          "label": "OfflinePartitionsCount",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Particiones bajo el mínimo ISR",
+      "description": "Debe ser 0: con acks=all las escrituras fallan en esas particiones.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT MAX(UnderMinIsrPartitionCount) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster'",
+          "region": "default",
+          "id": "",
+          "label": "UnderMinIsrPartitionCount",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Conexiones activas",
+      "description": "Conexiones de clientes a los brokers.",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT SUM(ClientConnectionCount) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster'",
+          "region": "default",
+          "id": "",
+          "label": "ClientConnectionCount",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Mensajes por segundo, por topic",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT SUM(MessagesInPerSec) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster' AND Topic IN (${topic:singlequote}) GROUP BY Topic",
+          "region": "default",
+          "id": "",
+          "label": "${PROP('Dim.Topic')}",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Bytes que entran, por topic",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT SUM(BytesInPerSec) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster' AND Topic IN (${topic:singlequote}) GROUP BY Topic",
+          "region": "default",
+          "id": "",
+          "label": "${PROP('Dim.Topic')}",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Bytes que salen, por topic",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT SUM(BytesOutPerSec) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster' AND Topic IN (${topic:singlequote}) GROUP BY Topic",
+          "region": "default",
+          "id": "",
+          "label": "${PROP('Dim.Topic')}",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Mensajes pendientes de consumir (lag), por grupo y topic",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT MAX(MaxOffsetLag) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster' AND Topic IN (${topic:singlequote}) AND \"Consumer Group\" IN (${group:singlequote}) GROUP BY \"Consumer Group\", Topic",
+          "region": "default",
+          "id": "",
+          "label": "${PROP('Dim.Consumer Group')} · ${PROP('Dim.Topic')}",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Retraso de consumo estimado, por grupo y topic",
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 1,
+          "metricEditorMode": 1,
+          "sqlExpression": "SELECT MAX(EstimatedMaxTimeLag) FROM \"AWS/Kafka\" WHERE \"Cluster Name\" = '$cluster' AND Topic IN (${topic:singlequote}) AND \"Consumer Group\" IN (${group:singlequote}) GROUP BY \"Consumer Group\", Topic",
+          "region": "default",
+          "id": "",
+          "label": "${PROP('Dim.Consumer Group')} · ${PROP('Dim.Topic')}",
+          "period": "",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Average",
+          "expression": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ]
+}

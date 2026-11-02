@@ -112,3 +112,68 @@ run "add_a_service" {
     error_message = "The db-access Job is expected to be replaced (new hash) when the service list changes."
   }
 }
+
+# La observabilidad (Grafana, Loki, Alloy) es opcional y no se instala si no se pide.
+run "observability_is_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(module.observability) == 0
+    error_message = "RULE observability-optional: without enable_observability nothing is installed."
+  }
+}
+
+run "observability_collects_workload_and_platform_logs_when_enabled" {
+  command = plan
+
+  variables {
+    enable_observability = true
+  }
+
+  assert {
+    condition     = length(module.observability) == 1 && module.observability[0].grafana_namespace == "monitoring"
+    error_message = "RULE observability-optional: enable_observability installs Grafana next to Prometheus."
+  }
+}
+
+run "loki_keeps_logs_on_the_node_without_a_logs_bucket" {
+  command = plan
+
+  variables {
+    enable_observability = true
+  }
+
+  assert {
+    condition     = module.observability[0].loki_storage == "filesystem"
+    error_message = "RULE logs-s3: without a bucket Loki falls back to the node's ephemeral disk."
+  }
+}
+
+run "loki_keeps_logs_in_the_bucket_from_the_platform" {
+  command = plan
+
+  variables {
+    enable_observability = true
+    logs_bucket          = "solventa-staging-logs-123456789012"
+    logs_bucket_region   = "us-east-1"
+  }
+
+  assert {
+    condition     = module.observability[0].loki_storage == "s3"
+    error_message = "RULE logs-s3: the platform's logs bucket reaches Loki through the baseline."
+  }
+}
+
+run "grafana_is_published_when_the_platform_gives_the_edge" {
+  command = plan
+
+  variables {
+    enable_observability = true
+    grafana_edge         = { node_port = 30090, public_url = "https://d111111abcdef8.cloudfront.net" }
+  }
+
+  assert {
+    condition     = module.observability[0].grafana_url == "https://d111111abcdef8.cloudfront.net/grafana/"
+    error_message = "RULE grafana-edge: the platform's edge reaches Grafana through the baseline."
+  }
+}

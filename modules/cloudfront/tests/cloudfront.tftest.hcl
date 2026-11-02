@@ -144,6 +144,38 @@ run "high_volume_paths_get_their_own_rate_limit_and_leave_the_global_one" {
   }
 }
 
+# Grafana: sus consultas (LogQL/PromQL) parecen inyección. Solo se exime de SQLi/XSS; el límite de cuerpo sigue aplicando.
+run "inspection_exemption_is_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = local.inspection_exempt_regex == var.exempt_body_path_regex
+    error_message = "RULE waf-inspection: without an extra path only the identity upload is exempt from SQLi/XSS."
+  }
+}
+
+run "grafana_path_is_exempt_from_inspection_only" {
+  command = plan
+
+  variables {
+    inspection_exempt_path_regex = "^/grafana(/.*)?$"
+  }
+
+  assert {
+    condition     = strcontains(local.inspection_exempt_regex, "^/grafana(/.*)?$") && strcontains(local.inspection_exempt_regex, var.exempt_body_path_regex)
+    error_message = "RULE waf-inspection: SQLi/XSS skip both the identity upload and the extra path."
+  }
+
+  assert {
+    condition = one([
+      for r in aws_wafv2_web_acl.this.rule :
+      r.statement[0].and_statement[0].statement[1].not_statement[0].statement[0].regex_match_statement[0].regex_string
+      if r.name == "body-size-limit"
+    ]) == var.exempt_body_path_regex
+    error_message = "RULE waf-inspection: the body size limit still applies to the extra path (only the identity upload is exempt)."
+  }
+}
+
 run "without_web_everything_goes_to_the_api" {
   command = plan
 
@@ -200,5 +232,34 @@ run "web_console_keeps_the_api_uncached_and_unchanged_for_mobile" {
   assert {
     condition     = aws_cloudfront_origin_access_control.web[0].signing_behavior == "always"
     error_message = "RULE edge-web-oac: CloudFront must sign its reads of the web bucket."
+  }
+}
+
+# Con la consola web el origen por defecto es el bucket: Grafana necesita su propia ruta hacia el API Gateway, sin caché.
+run "grafana_path_reaches_the_api_gateway_when_the_web_console_is_the_default" {
+  command = plan
+
+  variables {
+    enable_web                   = true
+    web_origin_domain            = "solventa-staging-web-123.s3.us-east-1.amazonaws.com"
+    extra_api_path_patterns      = ["/grafana*"]
+    inspection_exempt_path_regex = "^/grafana(/.*)?$"
+  }
+
+  assert {
+    condition     = toset([for b in aws_cloudfront_distribution.this.ordered_cache_behavior : b.path_pattern]) == toset(["/v1/*", "/api/*", "/grafana*"])
+    error_message = "RULE grafana-edge: /grafana* gets its own behavior next to /v1/* and /api/*."
+  }
+
+  assert {
+    condition = alltrue([
+      for b in aws_cloudfront_distribution.this.ordered_cache_behavior :
+      b.path_pattern != "/grafana*" || (
+        b.target_origin_id == "api-gateway" &&
+        b.cache_policy_id == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" &&
+        toset(b.allowed_methods) == toset(["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"])
+      )
+    ])
+    error_message = "RULE grafana-edge: Grafana reaches the API Gateway uncached and accepts logins (POST)."
   }
 }

@@ -118,6 +118,17 @@ module "baseline" {
   service_db_secret_names    = local.platform.service_db_secret_names
   service_db_secret_versions = local.platform.service_db_secret_versions
   metrics_server_args        = var.metrics_server_args
+  enable_observability       = var.enable_observability
+  # Bucket de logs de Loki; null si la plataforma no lo creó (plataforma anterior o apagado): Loki usa el disco del nodo.
+  # Grafana en /grafana por el borde; null si la plataforma no lo publica (borde apagado o plataforma anterior): port-forward.
+  grafana_edge = try(local.platform.grafana_node_port, null) == null || try(local.platform.public_url, null) == null ? null : {
+    node_port  = local.platform.grafana_node_port
+    public_url = local.platform.public_url
+  }
+  logs_bucket        = try(local.platform.logs_bucket, null)
+  logs_bucket_region = try(local.platform.logs_bucket, null) == null ? null : local.platform.region
+  # Kafka por topic en Grafana: solo si la plataforma dio a Grafana acceso a CloudWatch (rol de Pod Identity).
+  cloudwatch_region = try(local.platform.grafana_cloudwatch_role_arn, null) == null ? null : local.platform.region
 
   # Ninguna carga cambia antes de comprobar que las imágenes existen.
   depends_on = [terraform_data.image_check]

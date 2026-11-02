@@ -170,6 +170,35 @@ variable "edge_high_volume_throttling_burst_limit" {
   default     = 4000
 }
 
+variable "enable_logs_storage" {
+  description = "Crear el bucket S3 de logs de Loki (centavos al mes). Apagado, Loki usa el disco del nodo y pierde los logs si se reinicia."
+  type        = bool
+  default     = true
+}
+
+variable "enable_grafana_cloudwatch" {
+  description = "Dar a Grafana acceso de solo lectura a las métricas de CloudWatch (Kafka por topic). Sin costo propio; las métricas por topic de MSK cuestan centavos."
+  type        = bool
+  default     = true
+}
+
+variable "enable_grafana_edge" {
+  description = "Publicar Grafana en <public_url>/grafana por el borde (con su login). Apagado, Grafana solo se abre con port-forward."
+  type        = bool
+  default     = true
+}
+
+variable "grafana_node_port" {
+  description = "NodePort del Service de Grafana (el listener del NLB usa el mismo). Debe ser distinto del de cada servicio de services.yaml."
+  type        = number
+  default     = 30090
+
+  validation {
+    condition     = var.grafana_node_port >= 30000 && var.grafana_node_port <= 32767
+    error_message = "grafana_node_port must be in the NodePort range 30000-32767."
+  }
+}
+
 variable "enable_events" {
   description = "Crear el bus de eventos (MSK, HS2). Factura por hora y tarda ~25 min en crearse: apagarlo si la sesión no usa eventos."
   type        = bool

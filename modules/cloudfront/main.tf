@@ -6,6 +6,9 @@ data "aws_region" "current" {}
 
 locals {
   # 256 KB = 262144 bytes. Content-Length es texto: se bloquean los de 7 o más dígitos y los de 6 dígitos mayores que 262144.
+  # Rutas exentas de SQLi/XSS: la de la subida de identidad (binaria) y, si se da, la de Grafana.
+  inspection_exempt_regex = var.inspection_exempt_path_regex == "" ? var.exempt_body_path_regex : "(${var.exempt_body_path_regex})|(${var.inspection_exempt_path_regex})"
+
   content_length_over_256kb = "^([0-9]{7,}|[3-9][0-9]{5}|2[7-9][0-9]{4}|26[3-9][0-9]{3}|262[2-9][0-9]{2}|2621[5-9][0-9]|26214[5-9])$"
 }
 
@@ -174,7 +177,7 @@ resource "aws_wafv2_web_acl" "this" {
           not_statement {
             statement {
               regex_match_statement {
-                regex_string = var.exempt_body_path_regex
+                regex_string = local.inspection_exempt_regex
 
                 field_to_match {
                   uri_path {}
@@ -266,7 +269,7 @@ resource "aws_wafv2_web_acl" "this" {
               not_statement {
                 statement {
                   regex_match_statement {
-                    regex_string = var.exempt_body_path_regex
+                    regex_string = local.inspection_exempt_regex
 
                     field_to_match {
                       uri_path {}
@@ -452,6 +455,22 @@ resource "aws_cloudfront_distribution" "this" {
 
     content {
       path_pattern             = "/v1/*"
+      target_origin_id         = "api-gateway"
+      viewer_protocol_policy   = "redirect-to-https"
+      allowed_methods          = local.all_methods
+      cached_methods           = ["GET", "HEAD"]
+      compress                 = true
+      cache_policy_id          = local.cache_disabled
+      origin_request_policy_id = local.all_viewer_except_host_header
+    }
+  }
+
+  # Rutas extra hacia el API Gateway (Grafana): sin consola web ya caen en el comportamiento por defecto.
+  dynamic "ordered_cache_behavior" {
+    for_each = local.web_enabled ? toset(var.extra_api_path_patterns) : toset([])
+
+    content {
+      path_pattern             = ordered_cache_behavior.value
       target_origin_id         = "api-gateway"
       viewer_protocol_policy   = "redirect-to-https"
       allowed_methods          = local.all_methods

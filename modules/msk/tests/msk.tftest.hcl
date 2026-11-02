@@ -318,3 +318,22 @@ run "default_version_works_with_the_default_broker" {
     error_message = "The defaults (kafka.t3.small and a ZooKeeper-based version) must be a combination MSK accepts."
   }
 }
+
+run "metrics_are_published_per_topic_and_consumer_group" {
+  command = plan
+
+  assert {
+    condition     = aws_msk_cluster.this.enhanced_monitoring == "PER_TOPIC_PER_PARTITION"
+    error_message = "RULE msk-metrics-per-topic: Grafana reads per-topic traffic and consumer lag from CloudWatch, which needs PER_TOPIC_PER_PARTITION."
+  }
+}
+
+run "an_unknown_monitoring_level_is_rejected" {
+  command = plan
+
+  variables {
+    enhanced_monitoring = "EVERYTHING"
+  }
+
+  expect_failures = [var.enhanced_monitoring]
+}

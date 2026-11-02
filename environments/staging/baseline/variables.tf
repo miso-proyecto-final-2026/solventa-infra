@@ -27,6 +27,12 @@ variable "check_images_exist" {
   default     = true
 }
 
+variable "enable_observability" {
+  description = "Instala Grafana, Loki y Alloy para ver logs y métricas (se abre con port-forward; ver README)."
+  type        = bool
+  default     = true
+}
+
 variable "metrics_server_args" {
   description = "Argumentos extra de metrics-server."
   type        = list(string)

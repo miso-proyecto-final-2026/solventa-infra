@@ -39,7 +39,7 @@ Tres raíces de Terraform con ciclos de vida distintos:
 |---|---|---|
 | `bootstrap/` | Bucket S3 de estado (bloqueo nativo), proveedor OIDC de GitHub y roles de CI | Una vez; **sobrevive al teardown**, no cuesta |
 | `environments/staging/platform/` | VPC (2 AZ), EKS `solventa-staging` (3 × `t3.medium`), ECR, RDS PostgreSQL 16 Multi-AZ, ElastiCache Redis con failover, secretos | Bajo demanda |
-| `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Prometheus y Prometheus Adapter (HPA por concurrencia), Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
+| `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Prometheus y Prometheus Adapter (HPA por concurrencia), Grafana + Loki + Alloy (logs y métricas), Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
 
 - La lista de servicios vive **una sola vez** en `environments/staging/services.yaml` (contrato C1).
 - `modules/baseline` es la composición compartida: la usan `environments/staging/baseline` (AWS) y
@@ -433,6 +433,56 @@ pod (/metrics, gauge http_requests_in_flight) --scrape 15 s--> Prometheus --avg_
 
 Comprobar la cadena: `kubectl get --raw "/apis/custom.metrics.k8s.io/v1beta1/namespaces/staging/pods/*/http_requests_in_flight"`
 y `kubectl -n staging describe hpa solventa-backend` (dos métricas).
+
+## Logs y métricas en Grafana
+
+Para ver los logs de todos los servicios y las métricas en un solo panel, con la menor infraestructura posible
+(`modules/observability`, encendido en staging con `enable_observability = true`):
+
+```text
+pods (stdout) --API de Kubernetes--> Alloy (1 pod) --> Loki (1 pod) --> bucket S3 de logs
+                                                         |
+                                                         +--> Grafana <-- Prometheus (el del HPA)
+```
+
+- **Tres pods nuevos** en el namespace `monitoring` (≈ 200 mCPU y ≈ 0,5 GiB pedidos), sin PVC ni LoadBalancer.
+- **Alloy es un solo pod**, no un DaemonSet por nodo: lee los logs por la API de Kubernetes. Si se reinicia puede faltar un tramo corto.
+- **Loki guarda en S3** (`modules/logs-storage`, creado por la etapa `platform` con `enable_logs_storage = true`): bucket privado,
+  cifrado, solo TLS, con una regla de ciclo de vida de 14 días como red de seguridad. Loki accede por **Pod Identity** (rol limitado a
+  ese bucket, cuenta de servicio `loki` del namespace `monitoring`), sin claves. Conserva **7 días** (`log_retention`, 168 h).
+  Los logs sobreviven a los reinicios del pod; solo se pierden los minutos que Loki aún no había subido (su WAL está en un `emptyDir`
+  de 3 GiB). Costo: centavos al mes. Con `enable_logs_storage = false`, o con una plataforma anterior sin el bucket, Loki cae al
+  disco del nodo (48 h, se pierden si el pod se reinicia). `platform` debe aplicarse antes que `baseline`.
+- **Grafana no persiste nada**: las fuentes de datos (Loki y el Prometheus del HPA) y los dos dashboards se aprovisionan desde el módulo
+  (`modules/observability/dashboards/`). No se publica: se abre con un port-forward.
+
+**Por URL.** Con el borde encendido, Grafana se publica en `<public_url>/grafana/` (`enable_grafana_edge`, `grafana_node_port`, por
+defecto 30090; salida `grafana_url` de `platform`). Entra por el mismo camino que los servicios (CloudFront + WAF → API Gateway →
+NLB → NodePort) y quien conozca la URL ve la pantalla de login: **el acceso es solo con usuario y contraseña**. Conviene saber que:
+
+- La contraseña de `admin` la genera el chart; quien tenga `kubectl` la lee con `scripts/grafana.sh --credenciales`. No hay
+  inicio de sesión anónimo ni registro abierto. Grafana bloquea un usuario tras 5 intentos fallidos y el WAF limita las solicitudes por IP.
+- El WAF sigue activo: solo entran países de `edge_allowed_countries` y rige el límite por IP (`edge_rate_limit_per_5min`, 1000 por 5 min,
+  que un dashboard con varios paneles y auto-refresco no debería alcanzar). La ruta `/grafana` se exime solo de las reglas SQLi/XSS,
+  porque las consultas LogQL/PromQL se confunden con inyección; el límite de cuerpo sigue aplicando.
+- Grafana no persiste nada: los usuarios creados desde la interfaz se pierden si el pod se reinicia. Con una sola cuenta compartida es
+  lo esperado; para cuentas personales haría falta un proveedor externo (p. ej. GitHub OAuth de la organización).
+- Los logs pueden incluir ids de pólizas y clientes: quien tenga la contraseña los ve todos. Si se quiere restringir por IP, es una regla
+  más en el WAF.
+- `platform` se aplica antes que `baseline`: la URL sale del dominio de CloudFront. Para volver a privado, `enable_grafana_edge = false`.
+
+Por port-forward (con staging encendido y el kubeconfig configurado), sigue disponible:
+
+```sh
+scripts/grafana.sh            # imprime usuario y contraseña y abre http://localhost:3000
+```
+
+En la carpeta **Solventa**: *Logs de servicios* (volumen, errores y los logs con filtro por servicio, texto libre y
+`trace_id` / `correlation_id`) y *Servicios (métricas)* (pods recogidos y solicitudes en curso). Solo Pagos y Suscripción emiten hoy
+logs JSON con `trace_id`; los demás servicios aparecen como texto plano hasta que se estandarice su formato. Las etiquetas de Loki son
+solo `namespace`, `service`, `pod`, `container` y `level` (más etiquetas multiplicarían los flujos): lo demás se busca dentro de la línea.
+
+Pruebas: `terraform -chdir=modules/observability test`. `terraform -chdir=modules/logs-storage test` cubre el bucket y el rol. Las mutaciones `loki-persistent-volume`, `alloy-daemonset`, `logs-bucket-public` y `logs-policy-wildcard` protegen la regla de costo y la privacidad del bucket.
 
 ## Añadir un microservicio
 

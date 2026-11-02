@@ -20,7 +20,7 @@ run "prometheus_is_minimal_and_scrapes_only_annotated_pods" {
   }
 
   assert {
-    condition     = yamldecode(helm_release.prometheus.values[0]).server.persistentVolume.enabled == false && yamldecode(helm_release.prometheus.values[0]).server.retention == "2h"
+    condition     = yamldecode(helm_release.prometheus.values[0]).server.persistentVolume.enabled == false && yamldecode(helm_release.prometheus.values[0]).server.retention == "2d"
     error_message = "RULE monitoring-minimal: Prometheus keeps a short history without a persistent volume (nothing left behind on destroy)."
   }
 

@@ -1,0 +1,502 @@
+{
+  "title": "Trazabilidad: eventos y requests",
+  "uid": "solventa-trazas",
+  "tags": [
+    "solventa",
+    "kafka",
+    "requests"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "description": "Tablas con cada evento de Kafka y cada request, con la hora exacta, para seguirlos en la línea del tiempo. Los eventos publicados y consumidos con éxito aparecen cuando los servicios los escriben en el log (evento_publicado / evento_consumido); hoy se ven los fallos, reintentos y mensajes enviados a DLQ. Para seguir un evento completo, filtra por event_id.",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Solventa",
+      "tags": [
+        "solventa"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Servicio",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values({namespace=~\".+\"}, service)",
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "sort": 1
+      },
+      {
+        "name": "topic",
+        "label": "Topic (texto o regex)",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": ".*",
+            "value": ".*"
+          }
+        ]
+      },
+      {
+        "name": "event_id",
+        "label": "event_id (para seguir un evento)",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": ".*",
+            "value": ".*"
+          }
+        ]
+      },
+      {
+        "name": "path",
+        "label": "Ruta de request (texto o regex)",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": ".*",
+            "value": ".*"
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Eventos de Kafka en la línea del tiempo",
+      "description": "Una fila por línea de log relacionada con eventos: publicados, consumidos, fallos, reintentos, DLQ y reentregas omitidas. Ordenado por hora; filtra por topic o event_id para ver cuándo se produjo y cuándo se consumió.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{namespace=~\".+\", service=~\"$service\"} |~ \"(evento_publicado|evento_consumido|fallo event_id|no se pudo publicar|enviado a .*dlq|reentrega omitida)\" |~ \"$topic\" |~ \"$event_id\" | json | line_format \"{{.message}}\" | regexp \"topic=(?P<topic>[^ ]+)\" | regexp \"event_id=(?P<event_id>[0-9a-fA-F-]+)\"",
+          "queryType": "range",
+          "maxLines": 1000
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "format": "json"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "labels": true,
+              "Line": true,
+              "tsNs": true,
+              "id": true,
+              "labelTypes": true,
+              "namespace": true,
+              "container": true,
+              "stream": true,
+              "filename": true,
+              "logger": true,
+              "timestamp": true
+            },
+            "indexByName": {
+              "Time": 0,
+              "service": 1,
+              "level": 2,
+              "topic": 3,
+              "event_id": 4,
+              "message": 5,
+              "trace_id": 6,
+              "correlation_id": 7
+            },
+            "renameByName": {
+              "Time": "Hora",
+              "service": "Servicio",
+              "level": "Nivel",
+              "message": "Mensaje",
+              "topic": "Topic",
+              "event_id": "event_id",
+              "method": "Método",
+              "path": "Ruta",
+              "status": "Estado",
+              "trace_id": "trace_id",
+              "correlation_id": "correlation_id",
+              "pod": "Pod"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            },
+            "minWidth": 90
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hora"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 190
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mensaje"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 520
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Hora",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        },
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Requests recibidos",
+      "description": "Cada request entrante de cada servicio (log de acceso de uvicorn): hora, servicio, método, ruta y código de estado. No incluye la duración, que hoy no se registra.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{namespace=~\".+\", service=~\"$service\"} |= \"uvicorn.access\" |~ \"$path\" | json | logger=\"uvicorn.access\" | line_format \"{{.message}}\" | regexp \"\\\"(?P<method>[A-Z]+) (?P<path>[^ ?]+)[^ ]* HTTP/[0-9.]+\\\" (?P<status>[0-9]{3})\"",
+          "queryType": "range",
+          "maxLines": 1000
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "format": "json"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "labels": true,
+              "Line": true,
+              "tsNs": true,
+              "id": true,
+              "labelTypes": true,
+              "namespace": true,
+              "container": true,
+              "stream": true,
+              "filename": true,
+              "logger": true,
+              "timestamp": true
+            },
+            "indexByName": {
+              "Time": 0,
+              "service": 1,
+              "method": 2,
+              "path": 3,
+              "status": 4,
+              "trace_id": 5,
+              "pod": 6
+            },
+            "renameByName": {
+              "Time": "Hora",
+              "service": "Servicio",
+              "level": "Nivel",
+              "message": "Mensaje",
+              "topic": "Topic",
+              "event_id": "event_id",
+              "method": "Método",
+              "path": "Ruta",
+              "status": "Estado",
+              "trace_id": "trace_id",
+              "correlation_id": "correlation_id",
+              "pod": "Pod"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            },
+            "minWidth": 90
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hora"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 190
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mensaje"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 520
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Hora",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        },
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Requests con error (estado 400 o más)",
+      "description": "Solo los requests entrantes que respondieron 4xx o 5xx, para ubicar rápido cuándo falló cada uno.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{namespace=~\".+\", service=~\"$service\"} |= \"uvicorn.access\" |~ \"$path\" | json | logger=\"uvicorn.access\" | line_format \"{{.message}}\" | regexp \"\\\"(?P<method>[A-Z]+) (?P<path>[^ ?]+)[^ ]* HTTP/[0-9.]+\\\" (?P<status>[0-9]{3})\" | status >= 400",
+          "queryType": "range",
+          "maxLines": 1000
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "format": "json"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "labels": true,
+              "Line": true,
+              "tsNs": true,
+              "id": true,
+              "labelTypes": true,
+              "namespace": true,
+              "container": true,
+              "stream": true,
+              "filename": true,
+              "logger": true,
+              "timestamp": true
+            },
+            "indexByName": {
+              "Time": 0,
+              "service": 1,
+              "method": 2,
+              "path": 3,
+              "status": 4,
+              "trace_id": 5,
+              "pod": 6
+            },
+            "renameByName": {
+              "Time": "Hora",
+              "service": "Servicio",
+              "level": "Nivel",
+              "message": "Mensaje",
+              "topic": "Topic",
+              "event_id": "event_id",
+              "method": "Método",
+              "path": "Ruta",
+              "status": "Estado",
+              "trace_id": "trace_id",
+              "correlation_id": "correlation_id",
+              "pod": "Pod"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            },
+            "minWidth": 90
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hora"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 190
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mensaje"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 520
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Hora",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        },
+        "cellHeight": "sm"
+      }
+    }
+  ]
+}

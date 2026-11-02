@@ -10,6 +10,22 @@ module "addons" {
   system_namespace    = var.system_namespace
 }
 
+# Logs y métricas en Grafana: tres pods y nada fuera del clúster. Comparte el namespace de Prometheus.
+module "observability" {
+  source = "../observability"
+  count  = var.enable_observability ? 1 : 0
+
+  namespace      = module.addons.monitoring_namespace
+  log_namespaces = [module.addons.staging_namespace, module.addons.system_namespace]
+
+  grafana_edge       = var.grafana_edge
+  logs_bucket        = var.logs_bucket
+  logs_bucket_region = var.logs_bucket_region
+  cloudwatch_region  = var.cloudwatch_region
+
+  depends_on = [module.addons]
+}
+
 module "db_access" {
   source = "../db-access"
 
