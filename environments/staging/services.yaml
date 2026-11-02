@@ -115,8 +115,13 @@ services:
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
-    # Sin `edge`: es un servicio interno. Devuelve datos financieros del cliente y solo lo consumen otros servicios;
-    # no se publica por CloudFront ni por el API Gateway. Para probarlo, port-forward al Service (ver README).
+    # TODO(privado): TEMPORAL, solo para facilitar las pruebas en staging (Postman, curl). Devuelve datos financieros
+    # del cliente y solo lo consumen otros servicios; su única defensa es la clave estática X-Service-Key. Antes de
+    # cerrar el sprint, quitar este bloque `edge` (vuelve a ser interno), restaurar la aserción `internal-only` en
+    # baseline.tftest.hcl y rotar `solventa/staging/perfilamiento-api-key`.
+    edge:
+      node_port: 30086
+      path_prefixes: [/v1/perfilamiento]
 
   - name: solventa-suscripcion        # MS Suscripción (HU15): saga de suscripción y decisión automática; esquema propio `suscripcion`
     image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline

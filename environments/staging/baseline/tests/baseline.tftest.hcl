@@ -140,10 +140,11 @@ run "plan_produces_the_full_workload_set" {
     error_message = "RULE edge-nodeport: solventa-siniestros must get its edge NodePort (30083)."
   }
 
-  # Perfilamiento es interno: sin `edge` no se publica por el borde.
+  # TODO(privado): Perfilamiento se publica por el borde SOLO de forma temporal, para probarlo en staging.
+  # Al volver a interno, restaurar: !contains(keys(output.edge_node_ports), "solventa-perfilamiento").
   assert {
-    condition     = !contains(keys(output.edge_node_ports), "solventa-perfilamiento")
-    error_message = "RULE internal-only: solventa-perfilamiento must not get an edge NodePort."
+    condition     = output.edge_node_ports["solventa-perfilamiento"] == 30086
+    error_message = "RULE edge-nodeport: solventa-perfilamiento must get its temporary edge NodePort (30086)."
   }
 
   assert {
