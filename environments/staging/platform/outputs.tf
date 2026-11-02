@@ -105,6 +105,11 @@ output "public_url" {
   value       = local.edge_enabled ? module.cloudfront[0].url : null
 }
 
+output "grafana_cloudwatch_role_arn" {
+  description = "Rol de Pod Identity con el que Grafana lee CloudWatch (solo referencia); null si enable_grafana_cloudwatch es false."
+  value       = one(module.grafana_cloudwatch[*].role_arn)
+}
+
 output "grafana_node_port" {
   description = "NodePort por el que el borde alcanza a Grafana; null si Grafana no se publica."
   value       = local.grafana_edge_enabled ? var.grafana_node_port : null

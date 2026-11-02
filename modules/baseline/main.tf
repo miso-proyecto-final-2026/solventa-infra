@@ -21,6 +21,7 @@ module "observability" {
   grafana_edge       = var.grafana_edge
   logs_bucket        = var.logs_bucket
   logs_bucket_region = var.logs_bucket_region
+  cloudwatch_region  = var.cloudwatch_region
 
   depends_on = [module.addons]
 }

@@ -127,6 +127,8 @@ module "baseline" {
   }
   logs_bucket        = try(local.platform.logs_bucket, null)
   logs_bucket_region = try(local.platform.logs_bucket, null) == null ? null : local.platform.region
+  # Kafka por topic en Grafana: solo si la plataforma dio a Grafana acceso a CloudWatch (rol de Pod Identity).
+  cloudwatch_region = try(local.platform.grafana_cloudwatch_role_arn, null) == null ? null : local.platform.region
 
   # Ninguna carga cambia antes de comprobar que las imágenes existen.
   depends_on = [terraform_data.image_check]

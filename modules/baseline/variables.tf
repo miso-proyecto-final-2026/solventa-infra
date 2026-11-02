@@ -128,6 +128,12 @@ variable "logs_bucket_region" {
   default     = null
 }
 
+variable "cloudwatch_region" {
+  description = "Región de CloudWatch que Grafana consulta para ver Kafka por topic (la etapa platform crea el acceso). null = sin dashboard de Kafka."
+  type        = string
+  default     = null
+}
+
 variable "staging_namespace" {
   description = "Namespace de las cargas."
   type        = string

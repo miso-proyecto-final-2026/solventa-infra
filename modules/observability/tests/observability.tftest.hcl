@@ -132,10 +132,10 @@ run "dashboards_are_valid_and_use_the_provisioned_datasources" {
   assert {
     condition = alltrue([
       for nombre, d in local.dashboards : alltrue([
-        for p in jsondecode(d).panels : contains(["loki", "prometheus"], p.datasource.uid)
+        for p in jsondecode(d).panels : contains(["loki", "prometheus", "cloudwatch"], p.datasource.uid)
       ])
     ])
-    error_message = "Panels may only use the provisioned data sources (uid loki / prometheus)."
+    error_message = "Panels may only use the provisioned data sources (uid loki / prometheus / cloudwatch)."
   }
 }
 
@@ -299,4 +299,45 @@ run "grafana_edge_requires_https_and_a_nodeport" {
   }
 
   expect_failures = [var.grafana_edge]
+}
+
+run "kafka_by_topic_is_provisioned_only_with_cloudwatch_access" {
+  command = plan
+
+  assert {
+    condition = (
+      !contains([for d in yamldecode(helm_release.grafana.values[0]).datasources["datasources.yaml"].datasources : d.uid], "cloudwatch")
+      && !contains(keys(yamldecode(helm_release.grafana.values[0]).dashboards.solventa), "kafka")
+    )
+    error_message = "RULE observability-cloudwatch-optional: without cloudwatch_region there is no CloudWatch data source and no Kafka dashboard."
+  }
+}
+
+run "cloudwatch_data_source_and_kafka_dashboard_are_provisioned" {
+  command = plan
+
+  variables {
+    cloudwatch_region = "us-east-1"
+  }
+
+  assert {
+    condition = (
+      [for d in yamldecode(helm_release.grafana.values[0]).datasources["datasources.yaml"].datasources : d.uid] == ["loki", "prometheus", "cloudwatch"]
+      && yamldecode(helm_release.grafana.values[0]).datasources["datasources.yaml"].datasources[2].jsonData.defaultRegion == "us-east-1"
+      && yamldecode(helm_release.grafana.values[0]).datasources["datasources.yaml"].datasources[2].jsonData.authType == "default"
+    )
+    error_message = "RULE observability-cloudwatch: CloudWatch is a data source that uses the default credential chain (Pod Identity), no keys."
+  }
+
+  assert {
+    condition     = length(yamldecode(helm_release.grafana.values[0]).dashboards.solventa) == 3
+    error_message = "The Kafka dashboard is provisioned next to logs and services."
+  }
+
+  assert {
+    condition = alltrue([
+      for v in jsondecode(local.dashboards.kafka).templating.list : v.datasource.uid == "cloudwatch"
+    ]) && contains([for v in jsondecode(local.dashboards.kafka).templating.list : v.name], "topic")
+    error_message = "The Kafka dashboard filters by topic with variables that read CloudWatch."
+  }
 }

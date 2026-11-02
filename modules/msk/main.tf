@@ -73,6 +73,9 @@ resource "aws_msk_cluster" "this" {
   kafka_version          = var.kafka_version
   number_of_broker_nodes = var.broker_count
 
+  # Métricas por topic (y por grupo de consumo con PER_TOPIC_PER_PARTITION) en CloudWatch: Grafana las lee de ahí.
+  enhanced_monitoring = var.enhanced_monitoring
+
   broker_node_group_info {
     instance_type   = var.broker_node_type
     client_subnets  = var.subnet_ids

@@ -176,6 +176,12 @@ variable "enable_logs_storage" {
   default     = true
 }
 
+variable "enable_grafana_cloudwatch" {
+  description = "Dar a Grafana acceso de solo lectura a las métricas de CloudWatch (Kafka por topic). Sin costo propio; las métricas por topic de MSK cuestan centavos."
+  type        = bool
+  default     = true
+}
+
 variable "enable_grafana_edge" {
   description = "Publicar Grafana en <public_url>/grafana por el borde (con su login). Apagado, Grafana solo se abre con port-forward."
   type        = bool

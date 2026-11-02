@@ -53,10 +53,16 @@ locals {
   loki_store    = local.use_s3 ? "s3" : "filesystem"
   log_retention = coalesce(var.log_retention, local.use_s3 ? "168h" : "48h")
 
-  dashboards = {
-    logs      = file("${path.module}/dashboards/logs.json")
-    servicios = file("${path.module}/dashboards/servicios.json")
-  }
+  # CloudWatch (métricas de MSK por topic) solo si la plataforma da acceso a Grafana: sin él, ni la fuente ni su dashboard.
+  use_cloudwatch = var.cloudwatch_region != null
+
+  dashboards = merge(
+    {
+      logs      = file("${path.module}/dashboards/logs.json")
+      servicios = file("${path.module}/dashboards/servicios.json")
+    },
+    local.use_cloudwatch ? { kafka = file("${path.module}/dashboards/kafka.json") } : {},
+  )
 
   # `loki.source.kubernetes` lee los logs por la API (sin DaemonSet). Las etiquetas son pocas a propósito: cada
   # combinación crea un flujo en Loki. El resto (trace_id, correlation_id) queda dentro de la línea y se filtra con `| json`.
@@ -264,7 +270,7 @@ resource "helm_release" "grafana" {
     datasources = {
       "datasources.yaml" = {
         apiVersion = 1
-        datasources = [
+        datasources = concat([
           {
             name      = "Loki"
             uid       = "loki"
@@ -280,7 +286,16 @@ resource "helm_release" "grafana" {
             url    = var.prometheus_url
             access = "proxy"
           },
-        ]
+          ], [
+          # Credenciales del SDK por defecto: las inyecta EKS Pod Identity (modules/grafana-cloudwatch), sin claves en el chart.
+          for _ in range(local.use_cloudwatch ? 1 : 0) : {
+            name     = "CloudWatch"
+            uid      = "cloudwatch"
+            type     = "cloudwatch"
+            access   = "proxy"
+            jsonData = { authType = "default", defaultRegion = var.cloudwatch_region }
+          }
+        ])
       }
     }
 

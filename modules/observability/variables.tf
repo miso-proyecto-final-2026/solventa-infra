@@ -44,6 +44,12 @@ variable "logs_bucket_region" {
   }
 }
 
+variable "cloudwatch_region" {
+  description = "Región de CloudWatch que Grafana consulta (métricas de MSK por topic y desfase de consumo). null = sin fuente CloudWatch ni dashboard de Kafka. Requiere el rol de modules/grafana-cloudwatch."
+  type        = string
+  default     = null
+}
+
 variable "loki_service_account" {
   description = "Cuenta de servicio de Loki. Debe coincidir con la que autoriza el rol de Pod Identity del bucket."
   type        = string

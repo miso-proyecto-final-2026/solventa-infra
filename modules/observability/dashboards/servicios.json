@@ -75,5 +75,17 @@
         }
       ]
     }
+  ],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Solventa",
+      "tags": [
+        "solventa"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
   ]
 }

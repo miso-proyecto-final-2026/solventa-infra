@@ -176,6 +176,17 @@ module "logs_loki" {
   tags = local.tags
 }
 
+# Grafana lee las métricas de MSK (tráfico y desfase por topic) de CloudWatch. Pod Identity sobre la cuenta de servicio `grafana`
+# del namespace `monitoring` (la crea el chart en la etapa baseline).
+module "grafana_cloudwatch" {
+  count  = var.enable_grafana_cloudwatch ? 1 : 0
+  source = "../../../modules/grafana-cloudwatch"
+
+  cluster_name = module.eks.cluster_name
+
+  tags = local.tags
+}
+
 module "postgres" {
   source = "../../../modules/postgres"
 

@@ -61,6 +61,67 @@
   },
   "panels": [
     {
+      "id": 10,
+      "type": "bargauge",
+      "title": "Errores por servicio (en el rango de tiempo)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (service) (count_over_time({namespace=~\".+\", service=~\"$service\"} |~ \"\\\"level\\\": \\\"(ERROR|CRITICAL)\\\"|Traceback|ERROR:\"[$__range]))",
+          "legendFormat": "{{service}}",
+          "queryType": "instant"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
       "id": 1,
       "type": "timeseries",
       "title": "Volumen de logs por servicio",
@@ -70,7 +131,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 6,
         "w": 12,
         "h": 7
       },
@@ -108,7 +169,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 6,
         "w": 12,
         "h": 7
       },
@@ -150,7 +211,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 7,
+        "y": 13,
         "w": 24,
         "h": 18
       },
@@ -173,6 +234,18 @@
         "sortOrder": "Descending",
         "dedupStrategy": "none"
       }
+    }
+  ],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Solventa",
+      "tags": [
+        "solventa"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
     }
   ]
 }

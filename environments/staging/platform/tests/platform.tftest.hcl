@@ -326,6 +326,29 @@ run "logs_bucket_off_creates_nothing" {
   }
 }
 
+# Grafana lee las métricas de MSK por topic desde CloudWatch: rol de solo lectura por Pod Identity, apagable.
+run "grafana_reads_cloudwatch_and_it_can_be_switched_off" {
+  command = plan
+
+  assert {
+    condition     = length(module.grafana_cloudwatch) == 1
+    error_message = "RULE grafana-cloudwatch: the platform gives Grafana a CloudWatch read role (its ARN is published for the baseline)."
+  }
+}
+
+run "grafana_cloudwatch_off_creates_nothing" {
+  command = plan
+
+  variables {
+    enable_grafana_cloudwatch = false
+  }
+
+  assert {
+    condition     = length(module.grafana_cloudwatch) == 0 && output.grafana_cloudwatch_role_arn == null
+    error_message = "RULE grafana-cloudwatch: without enable_grafana_cloudwatch no role exists and the output is null."
+  }
+}
+
 # Grafana entra por el mismo borde que los servicios, bajo /grafana y con su propio login.
 run "grafana_is_published_through_the_edge" {
   command = plan
