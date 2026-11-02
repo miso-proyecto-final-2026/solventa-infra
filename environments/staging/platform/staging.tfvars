@@ -25,3 +25,6 @@ db_final_snapshot        = false
 cache_node_type = "cache.t4g.micro"
 cache_engine    = "redis"
 cache_replicas  = 1
+
+# Países desde los que el WAF deja entrar al borde (ISO 3166-1 alfa-2); el resto se bloquea. IT: acceso del equipo desde Italia.
+edge_allowed_countries = ["CO", "US", "IT"]
