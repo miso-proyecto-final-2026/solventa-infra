@@ -60,6 +60,7 @@ locals {
     {
       logs      = file("${path.module}/dashboards/logs.json")
       servicios = file("${path.module}/dashboards/servicios.json")
+      trazas    = file("${path.module}/dashboards/trazas.json")
     },
     local.use_cloudwatch ? { kafka = file("${path.module}/dashboards/kafka.json") } : {},
   )
@@ -253,9 +254,10 @@ resource "helm_release" "grafana" {
     persistence   = { enabled = false }
     testFramework = { enabled = false }
 
+    # Grafana 13 con SQLite y la migración de almacenamiento unificado supera 256Mi al arrancar (OOMKilled en bucle).
     resources = {
-      requests = { cpu = "50m", memory = "128Mi" }
-      limits   = { memory = "256Mi" }
+      requests = { cpu = "100m", memory = "384Mi" }
+      limits   = { memory = "768Mi" }
     }
 
     "grafana.ini" = merge({

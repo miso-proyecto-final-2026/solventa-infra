@@ -112,8 +112,8 @@ run "grafana_is_stateless_private_and_provisioned" {
   }
 
   assert {
-    condition     = length(yamldecode(helm_release.grafana.values[0]).dashboards.solventa) == 2
-    error_message = "Both dashboards (logs and services) are provisioned."
+    condition     = length(yamldecode(helm_release.grafana.values[0]).dashboards.solventa) == 3
+    error_message = "The three dashboards (logs, services and event/request tables) are provisioned."
   }
 }
 
@@ -330,8 +330,8 @@ run "cloudwatch_data_source_and_kafka_dashboard_are_provisioned" {
   }
 
   assert {
-    condition     = length(yamldecode(helm_release.grafana.values[0]).dashboards.solventa) == 3
-    error_message = "The Kafka dashboard is provisioned next to logs and services."
+    condition     = length(yamldecode(helm_release.grafana.values[0]).dashboards.solventa) == 4
+    error_message = "The Kafka dashboard is provisioned next to logs, services and the event/request tables."
   }
 
   assert {
