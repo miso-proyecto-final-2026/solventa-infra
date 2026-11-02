@@ -8,7 +8,7 @@ one_nat_gateway_per_az = false
 
 kubernetes_version = "1.35"
 node_instance_type = "t3.medium"
-node_count         = 3
+node_count         = 4
 
 # Restringir a la IP del equipo cuando sea posible (FR-011a).
 api_allowed_cidrs = ["0.0.0.0/0"]

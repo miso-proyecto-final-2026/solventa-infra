@@ -38,7 +38,7 @@ Tres raíces de Terraform con ciclos de vida distintos:
 | Raíz | Qué contiene | Ciclo de vida |
 |---|---|---|
 | `bootstrap/` | Bucket S3 de estado (bloqueo nativo), proveedor OIDC de GitHub y roles de CI | Una vez; **sobrevive al teardown**, no cuesta |
-| `environments/staging/platform/` | VPC (2 AZ), EKS `solventa-staging` (3 × `t3.medium`), ECR, RDS PostgreSQL 16 Multi-AZ, ElastiCache Redis con failover, secretos | Bajo demanda |
+| `environments/staging/platform/` | VPC (2 AZ), EKS `solventa-staging` (4 × `t3.medium`), ECR, RDS PostgreSQL 16 Multi-AZ, ElastiCache Redis con failover, secretos | Bajo demanda |
 | `environments/staging/baseline/` | Dentro del clúster: metrics-server, External Secrets, Prometheus y Prometheus Adapter (HPA por concurrencia), Grafana + Loki + Alloy (logs y métricas), Job `db-access`, y por servicio Deployment, Service, HPA, PDB y migración | Bajo demanda |
 
 - La lista de servicios vive **una sola vez** en `environments/staging/services.yaml` (contrato C1).
@@ -87,7 +87,7 @@ node group falla con `AsgInstanceLaunchFailures ... quota for maximum Fleet Requ
 ```sh
 aws service-quotas get-service-quota --service-code ec2 --quota-code L-1216C47A \
   --region us-east-1 --query Quota.Value
-# Si es < 16, solicita el aumento (3 × t3.medium necesitan 6 vCPU; pide ≥ 16 para tener margen)
+# Si es < 16, solicita el aumento (4 × t3.medium necesitan 8 vCPU; pide ≥ 16 para tener margen)
 aws service-quotas request-service-quota-increase --service-code ec2 --quota-code L-1216C47A \
   --region us-east-1 --desired-value 16
 ```
@@ -225,7 +225,7 @@ El rol de apply de CI siempre es administrador del clúster; añade a las person
 
 ```sh
 aws eks update-kubeconfig --name solventa-staging --region us-east-1
-kubectl get nodes -o wide        # 3 nodos en 2 AZ
+kubectl get nodes -o wide        # 4 nodos en 2 AZ
 ```
 
 Solo entran los principales listados como access entries (administradores, rol de plan en solo lectura y
