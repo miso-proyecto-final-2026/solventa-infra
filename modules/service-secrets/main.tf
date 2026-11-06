@@ -53,7 +53,7 @@ resource "aws_secretsmanager_secret_version" "cache" {
 resource "random_password" "shared" {
   for_each = var.shared_secret_names
 
-  length  = 48
+  length  = lookup(var.shared_secret_lengths, each.key, 48)
   special = false
 }
 
@@ -71,5 +71,5 @@ resource "aws_secretsmanager_secret_version" "shared" {
   for_each = var.shared_secret_names
 
   secret_id     = aws_secretsmanager_secret.shared[each.key].id
-  secret_string = jsonencode({ value = random_password.shared[each.key].result })
+  secret_string = jsonencode({ value = lookup(var.shared_secret_values, each.key, random_password.shared[each.key].result) })
 }

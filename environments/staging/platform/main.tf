@@ -23,6 +23,9 @@ locals {
 }
 
 locals {
+  # Debe coincidir con `seed_secret_env_vars` de solventa-identidad en services.yaml.
+  asesores_secret_name = "solventa/${var.name}/asesores-password"
+
   # Servicios con exposición pública (campo `edge` de services.yaml).
   edge_services = { for name, s in module.service_list.services : name => s if s.edge != null }
   edge_enabled  = var.enable_edge && length(local.edge_services) > 0
@@ -264,6 +267,10 @@ module "service_secrets" {
 
   services            = { for name, s in module.service_list.services : name => { role_name = s.role_name } }
   shared_secret_names = module.service_list.shared_secret_names
+
+  # Clave de los asesores del demo: corta y sin símbolos para poder dictarla; asesores_password la fija a mano.
+  shared_secret_lengths = { (local.asesores_secret_name) = 16 }
+  shared_secret_values  = var.asesores_password == null ? {} : { (local.asesores_secret_name) = var.asesores_password }
 
   db_host          = module.postgres.endpoint
   db_port          = module.postgres.port

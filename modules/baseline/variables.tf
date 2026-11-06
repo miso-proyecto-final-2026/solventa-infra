@@ -19,15 +19,17 @@ variable "services" {
         stabilization_window_seconds = optional(number, 30)
       }), {})
     }), {})
-    metrics_path      = optional(string)
-    owned_schemas     = list(string)
-    database_env_vars = optional(list(string), ["DATABASE_URL"])
-    cache_env_var     = optional(string)
-    settings          = optional(map(string), {})
-    secret_env_vars   = optional(map(string), {})
-    migration_command = optional(list(string))
-    run_as_non_root   = optional(bool, false)
-    role_name         = string
+    metrics_path         = optional(string)
+    owned_schemas        = list(string)
+    database_env_vars    = optional(list(string), ["DATABASE_URL"])
+    cache_env_var        = optional(string)
+    settings             = optional(map(string), {})
+    secret_env_vars      = optional(map(string), {})
+    migration_command    = optional(list(string))
+    seed_command         = optional(list(string))
+    seed_secret_env_vars = optional(map(string), {})
+    run_as_non_root      = optional(bool, false)
+    role_name            = string
     edge = optional(object({
       node_port     = number
       path_prefixes = list(string)
@@ -91,6 +93,12 @@ variable "service_db_secret_names" {
 
 variable "service_db_secret_versions" {
   description = "Mapa servicio => version_id del secreto (entrada del hash del Job db-access)."
+  type        = map(string)
+  default     = {}
+}
+
+variable "shared_secret_versions" {
+  description = "Mapa nombre del secreto compartido => version_id (entrada del hash del Job de siembra). Vacío si la plataforma no lo publica."
   type        = map(string)
   default     = {}
 }

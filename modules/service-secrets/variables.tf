@@ -11,6 +11,19 @@ variable "shared_secret_names" {
   default     = []
 }
 
+variable "shared_secret_lengths" {
+  description = "Largo del valor aleatorio por secreto compartido (nombre completo => largo). Los que no aparecen usan 48."
+  type        = map(number)
+  default     = {}
+}
+
+variable "shared_secret_values" {
+  description = "Valor fijo por secreto compartido (nombre completo => valor), por ejemplo la clave del demo. Los que no aparecen usan el valor aleatorio."
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
 variable "db_host" {
   description = "Host de PostgreSQL."
   type        = string

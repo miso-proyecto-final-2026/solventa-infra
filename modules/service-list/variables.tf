@@ -46,8 +46,12 @@ variable "config" {
       settings          = optional(map(string), {})
       secret_env_vars   = optional(map(string), {})
       migration_command = optional(list(string))
-      run_as_non_root   = optional(bool, false)
-      deploy_repository = optional(string)
+      # Siembra de datos (Job que corre tras la migración y antes del Deployment). Sin `seed_command` no hay Job.
+      # `seed_secret_env_vars`: variable => secreto de Secrets Manager, solo para el Job (nunca llega al Deployment).
+      seed_command         = optional(list(string))
+      seed_secret_env_vars = optional(map(string), {})
+      run_as_non_root      = optional(bool, false)
+      deploy_repository    = optional(string)
       # Qué topics produce y consume el servicio (HS2). Solo recibe permisos sobre estos.
       eventos = optional(object({
         produce = optional(list(string), [])
@@ -201,6 +205,20 @@ variable "config" {
       ])
     ])
     error_message = "A secret_env_vars entry collides with a connection variable or a setting, or its secret name does not start with \"solventa/\"."
+  }
+
+  # V16: los secretos del Job de siembra no colisionan con conexiones, settings ni secret_env_vars; apuntan al prefijo
+  # `solventa/` y solo tienen sentido con `seed_command`.
+  validation {
+    condition = alltrue([
+      for s in var.config.services : alltrue([
+        for k, name in s.seed_secret_env_vars :
+        !contains(concat(s.database_env_vars, s.cache_env_var == "" ? [] : [s.cache_env_var], keys(s.settings), keys(s.secret_env_vars)), k)
+        && startswith(name, "solventa/")
+        && s.seed_command != null
+      ])
+    ])
+    error_message = "A seed_secret_env_vars entry collides with a connection variable, a setting or a secret_env_vars entry, its secret name does not start with \"solventa/\", or the service has no seed_command."
   }
 
   # V9: exposición pública: NodePort válido y único, y prefijos de ruta absolutos, sin barra final y no repetidos

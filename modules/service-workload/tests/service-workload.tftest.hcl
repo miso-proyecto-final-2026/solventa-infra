@@ -362,3 +362,110 @@ run "concurrency_target_scales_by_requests_in_flight" {
     error_message = "RULE edge: the edge NodePort only exposes the http port; the metrics path is filtered by the API Gateway routes."
   }
 }
+
+# Siembra de datos: Job opcional, con un ExternalSecret propio que el Deployment no monta.
+run "seed_job_runs_after_the_migration_with_its_own_secret" {
+  command = plan
+
+  variables {
+    name = "solventa-identidad"
+    service = {
+      image_tag   = "abc1234"
+      port        = 8000
+      health_path = "/health"
+      resources = {
+        requests = { cpu = "250m", memory = "256Mi" }
+        limits   = { cpu = "1000m", memory = "512Mi" }
+      }
+      replicas             = { min = 2, max = 6 }
+      database_env_vars    = ["DATABASE_URL"]
+      cache_env_var        = null
+      settings             = { ENTORNO = "staging" }
+      migration_command    = ["alembic", "upgrade", "head"]
+      seed_command         = ["python", "scripts/sembrar_asesores_staging.py"]
+      seed_secret_env_vars = { ASESORES_PASSWORD = "solventa/staging/asesores-password" }
+    }
+    db_secret_name       = "solventa/staging/solventa-identidad/db"
+    seed_secret_versions = { "solventa/staging/asesores-password" = "v1" }
+  }
+
+  assert {
+    condition     = length(kubernetes_job_v1.seed) == 1 && startswith(kubernetes_job_v1.seed[0].metadata[0].name, "solventa-identidad-seed-")
+    error_message = "A service with seed_command must get a seed Job named <service>-seed-<hash>."
+  }
+
+  assert {
+    condition     = kubernetes_job_v1.seed[0].spec[0].template[0].spec[0].container[0].command == tolist(["python", "scripts/sembrar_asesores_staging.py"])
+    error_message = "The seed Job must run seed_command."
+  }
+
+  assert {
+    condition     = kubernetes_job_v1.seed[0].wait_for_completion == true
+    error_message = "Terraform must wait for the seed Job so the Deployment starts after it."
+  }
+
+  assert {
+    condition     = kubernetes_job_v1.seed[0].metadata[0].labels["app.kubernetes.io/name"] == "solventa-identidad-seed"
+    error_message = "RULE selector: seed pods must stay out of the Deployment selector (HA03)."
+  }
+
+  assert {
+    condition     = contains([for e in kubernetes_job_v1.seed[0].spec[0].template[0].spec[0].container[0].env_from : try(e.secret_ref[0].name, "")], "solventa-identidad-seed")
+    error_message = "The seed Job must read the secret from its own ExternalSecret."
+  }
+
+  assert {
+    condition     = yamldecode(kubectl_manifest.seed[0].yaml_body).spec.target.template.data["ASESORES_PASSWORD"] == "{{ .seed_asesores_password }}" && contains([for d in yamldecode(kubectl_manifest.seed[0].yaml_body).spec.data : d.remoteRef.key], "solventa/staging/asesores-password")
+    error_message = "The seed ExternalSecret must expose the declared variable from `value` of the secret."
+  }
+
+  assert {
+    condition     = !contains(keys(yamldecode(kubectl_manifest.connection.yaml_body).spec.target.template.data), "ASESORES_PASSWORD")
+    error_message = "RULE least-privilege: the seed password must not reach the connection secret the Deployment mounts."
+  }
+
+  assert {
+    condition     = !can(regex("[A-Za-z0-9]{40,}", kubectl_manifest.seed[0].yaml_body))
+    error_message = "RULE no-secrets-in-state: the seed manifest must hold references, never secret values."
+  }
+}
+
+run "seed_job_is_rerun_when_the_secret_value_changes" {
+  command = plan
+
+  variables {
+    name = "solventa-identidad"
+    service = {
+      image_tag   = "abc1234"
+      port        = 8000
+      health_path = "/health"
+      resources = {
+        requests = { cpu = "250m", memory = "256Mi" }
+        limits   = { cpu = "1000m", memory = "512Mi" }
+      }
+      replicas             = { min = 2, max = 6 }
+      database_env_vars    = ["DATABASE_URL"]
+      cache_env_var        = null
+      settings             = { ENTORNO = "staging" }
+      migration_command    = ["alembic", "upgrade", "head"]
+      seed_command         = ["python", "scripts/sembrar_asesores_staging.py"]
+      seed_secret_env_vars = { ASESORES_PASSWORD = "solventa/staging/asesores-password" }
+    }
+    db_secret_name       = "solventa/staging/solventa-identidad/db"
+    seed_secret_versions = { "solventa/staging/asesores-password" = "v2" }
+  }
+
+  assert {
+    condition     = output.seed_job_name != run.seed_job_runs_after_the_migration_with_its_own_secret.seed_job_name
+    error_message = "A new secret version must produce a new Job name so the seed runs again."
+  }
+}
+
+run "service_without_seed_has_no_seed_objects" {
+  command = plan
+
+  assert {
+    condition     = length(kubernetes_job_v1.seed) == 0 && length(kubectl_manifest.seed) == 0 && output.seed_job_name == null
+    error_message = "Without seed_command no seed Job or ExternalSecret may exist."
+  }
+}

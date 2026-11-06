@@ -60,6 +60,11 @@ output "service_db_secret_versions" {
   value       = module.service_secrets.service_db_secret_versions
 }
 
+output "shared_secret_versions" {
+  description = "Mapa nombre del secreto compartido => version_id (entrada del hash del Job de siembra)."
+  value       = module.service_secrets.shared_secret_versions
+}
+
 output "cache_secret_name" {
   description = "Nombre del secreto de caché (solo referencia)."
   value       = module.service_secrets.cache_secret_name

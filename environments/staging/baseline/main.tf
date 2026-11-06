@@ -117,8 +117,10 @@ module "baseline" {
 
   service_db_secret_names    = local.platform.service_db_secret_names
   service_db_secret_versions = local.platform.service_db_secret_versions
-  metrics_server_args        = var.metrics_server_args
-  enable_observability       = var.enable_observability
+  # Plataformas anteriores no publican las versiones: sin ellas el Job de siembra solo cambia con la imagen o el comando.
+  shared_secret_versions = try(local.platform.shared_secret_versions, {})
+  metrics_server_args    = var.metrics_server_args
+  enable_observability   = var.enable_observability
   # Bucket de logs de Loki; null si la plataforma no lo creó (plataforma anterior o apagado): Loki usa el disco del nodo.
   # Grafana en /grafana por el borde; null si la plataforma no lo publica (borde apagado o plataforma anterior): port-forward.
   grafana_edge = try(local.platform.grafana_node_port, null) == null || try(local.platform.public_url, null) == null ? null : {
