@@ -4,8 +4,8 @@ output "services" {
 }
 
 output "shared_secret_names" {
-  description = "Nombres de los secretos compartidos que declaran los servicios en secret_env_vars."
-  value       = toset(flatten([for s in var.config.services : values(s.secret_env_vars)]))
+  description = "Nombres de los secretos compartidos que declaran los servicios en secret_env_vars y seed_secret_env_vars."
+  value       = toset(flatten([for s in var.config.services : concat(values(s.secret_env_vars), values(s.seed_secret_env_vars))]))
 }
 
 output "reserved_schemas" {

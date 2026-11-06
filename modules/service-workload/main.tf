@@ -16,8 +16,15 @@ locals {
     "app.kubernetes.io/component" = "migration"
   })
 
+  # Igual que los de migración, los pods de siembra quedan fuera del selector del Deployment (HA03).
+  seed_labels = merge(local.labels, {
+    "app.kubernetes.io/name"      = "${var.name}-seed"
+    "app.kubernetes.io/component" = "seed"
+  })
+
   connection_secret = "${var.name}-connection"
   settings_map      = "${var.name}-settings"
+  seed_secret       = "${var.name}-seed"
 
   has_cache        = var.service.cache_env_var != null
   cache_has_secret = local.has_cache && var.cache.secret_ref != null
@@ -58,6 +65,19 @@ locals {
 
   has_migration  = var.service.migration_command != null
   migration_hash = substr(sha256(jsonencode([local.image, var.service.migration_command])), 0, 8)
+
+  # Siembra: Job opcional. Sus secretos viajan en un ExternalSecret propio, que el Deployment no monta.
+  has_seed         = var.service.seed_command != null
+  has_seed_secrets = local.has_seed && length(var.service.seed_secret_env_vars) > 0
+  seed_secret_keys = { for env, name in var.service.seed_secret_env_vars : env => "seed_${lower(env)}" }
+
+  # Cambia con la imagen, el comando, los ajustes y el valor de los secretos: así el Job vuelve a correr si cambia la clave.
+  seed_hash = substr(sha256(jsonencode([
+    local.image,
+    var.service.seed_command,
+    var.service.settings,
+    { for env, name in var.service.seed_secret_env_vars : env => lookup(var.seed_secret_versions, name, "") },
+  ])), 0, 8)
 }
 
 resource "kubernetes_service_account_v1" "this" {
@@ -225,4 +245,101 @@ resource "kubernetes_job_v1" "migrate" {
   }
 
   depends_on = [kubectl_manifest.connection, kubernetes_config_map_v1.settings]
+}
+
+# ---------------------------------------------------------------------------
+# Siembra de datos: se ejecuta después de la migración y antes de crear o cambiar la carga
+# ---------------------------------------------------------------------------
+resource "kubectl_manifest" "seed" {
+  count = local.has_seed_secrets ? 1 : 0
+
+  yaml_body = yamlencode({
+    apiVersion = "external-secrets.io/v1"
+    kind       = "ExternalSecret"
+    metadata = {
+      name      = local.seed_secret
+      namespace = var.namespace
+      labels    = local.seed_labels
+    }
+    spec = {
+      refreshInterval = "1h"
+      secretStoreRef  = { kind = "ClusterSecretStore", name = var.secret_store_name }
+      target = {
+        name           = local.seed_secret
+        creationPolicy = "Owner"
+        template = {
+          engineVersion = "v2"
+          data          = { for env, key in local.seed_secret_keys : env => "{{ .${key} }}" }
+        }
+      }
+      data = [for env, name in var.service.seed_secret_env_vars : {
+        secretKey = local.seed_secret_keys[env]
+        remoteRef = { key = name, property = "value" }
+      }]
+    }
+  })
+}
+
+resource "kubernetes_job_v1" "seed" {
+  count = local.has_seed ? 1 : 0
+
+  metadata {
+    name      = "${var.name}-seed-${local.seed_hash}"
+    namespace = var.namespace
+    labels    = local.seed_labels
+  }
+
+  spec {
+    backoff_limit = 1
+
+    template {
+      metadata {
+        labels = local.seed_labels
+      }
+
+      spec {
+        restart_policy                  = "Never"
+        service_account_name            = kubernetes_service_account_v1.this.metadata[0].name
+        automount_service_account_token = false
+
+        container {
+          name    = "app"
+          image   = local.image
+          command = var.service.seed_command
+
+          env_from {
+            secret_ref {
+              name = local.connection_secret
+            }
+          }
+
+          env_from {
+            config_map_ref {
+              name = local.settings_map
+            }
+          }
+
+          dynamic "env_from" {
+            for_each = local.has_seed_secrets ? [local.seed_secret] : []
+
+            content {
+              secret_ref {
+                name = env_from.value
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  wait_for_completion = true
+
+  timeouts {
+    create = var.seed_wait_timeout
+    update = var.seed_wait_timeout
+  }
+
+  # La siembra necesita las tablas: corre después de la migración.
+  depends_on = [kubernetes_job_v1.migrate, kubectl_manifest.connection, kubectl_manifest.seed, kubernetes_config_map_v1.settings]
 }

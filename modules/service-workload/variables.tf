@@ -31,12 +31,14 @@ variable "service" {
       node_port     = number
       path_prefixes = list(string)
     }))
-    database_env_vars = optional(list(string), ["DATABASE_URL"])
-    cache_env_var     = optional(string)
-    settings          = optional(map(string), {})
-    secret_env_vars   = optional(map(string), {})
-    migration_command = optional(list(string))
-    run_as_non_root   = optional(bool, false)
+    database_env_vars    = optional(list(string), ["DATABASE_URL"])
+    cache_env_var        = optional(string)
+    settings             = optional(map(string), {})
+    secret_env_vars      = optional(map(string), {})
+    migration_command    = optional(list(string))
+    seed_command         = optional(list(string))
+    seed_secret_env_vars = optional(map(string), {})
+    run_as_non_root      = optional(bool, false)
   })
 }
 
@@ -77,6 +79,18 @@ variable "cache" {
     port       = optional(number, 6379)
     secret_ref = optional(string)
   })
+}
+
+variable "seed_secret_versions" {
+  description = "Mapa nombre del secreto => version_id. Si cambia el valor de un secreto de siembra, el Job se vuelve a ejecutar."
+  type        = map(string)
+  default     = {}
+}
+
+variable "seed_wait_timeout" {
+  description = "Tiempo máximo de espera de la siembra."
+  type        = string
+  default     = "10m"
 }
 
 variable "migration_wait_timeout" {

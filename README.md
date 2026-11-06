@@ -257,7 +257,34 @@ terraform -chdir=environments/staging/baseline apply -var-file=staging.tfvars \
 - **Importante:** `image_tag` debe coincidir con el SHA que está corriendo antes de un apply del baseline que
   lo cambie. Si no, se recrea el Job de migración con una imagen anterior y Alembic puede fallar con
   `Can't locate revision`.
-- Orden dentro del apply: secreto → Job `db-access` → Job de migración → Deployment.
+- Orden dentro del apply: secreto → Job `db-access` → Job de migración → Job de siembra (si el servicio lo declara) → Deployment.
+
+## Siembra de asesores del demo
+
+`solventa-identidad` declara `seed_command` en `services.yaml`: un Job `solventa-identidad-seed-<hash>` que corre
+después de la migración y antes del Deployment, y crea `asesor1` a `asesor5@solventa.test` (rol `ASESOR`). Es idempotente
+y la imagen debe incluir `scripts/` (Dockerfile de identidad).
+
+- **Clave compartida.** Vive en Secrets Manager (`solventa/staging/asesores-password`) y llega al Job por un
+  `ExternalSecret` propio (`solventa-identidad-seed`); el Deployment no la monta. Se fija al aplicar la **plataforma**:
+
+  ```sh
+  TF_VAR_asesores_password='<clave de 8 o más caracteres>'     terraform -chdir=environments/staging/platform apply -var-file=staging.tfvars
+  ```
+
+  Sin la variable, Terraform genera una clave aleatoria de 16 caracteres sin símbolos.
+  **Ojo:** la variable hay que pasarla en *cada* apply de la plataforma. Si un apply posterior (p. ej. el workflow
+  `platform-ops`, que hoy no la recibe) corre sin ella, la clave vuelve a la aleatoria.
+- **Leerla:** `aws secretsmanager get-secret-value --secret-id solventa/staging/asesores-password --query SecretString --output text`
+  (JSON con `value`).
+- **Cambiarla con staging arriba:** repetir el apply de la plataforma con otro `TF_VAR_asesores_password` y luego el del
+  baseline. La nueva versión del secreto cambia el hash del Job, que vuelve a correr; `ASESORES_ACTUALIZAR_CLAVE=1` (en
+  `settings` de identidad) hace que reescriba la clave de los asesores que ya existen.
+- **Verificar:** `kubectl -n staging get jobs` muestra `solventa-identidad-seed-<hash>` en `Complete`; el login de
+  `asesor1@solventa.test` en `/v1/sesiones-internas` devuelve un `access_token` con `rol: ASESOR`.
+- Staging tiene login público por el borde: usa una clave que no sea trivial y rótala o quita los asesores tras el demo.
+- Quitar un asesor de la lista del script no lo borra de la base. En kind no se siembra (el servicio no declara
+  `seed_command` allí).
 
 ## Verificación de migraciones
 

@@ -13,6 +13,11 @@ output "service_db_secret_versions" {
   value       = { for k, v in aws_secretsmanager_secret_version.service_db : k => v.version_id }
 }
 
+output "shared_secret_versions" {
+  description = "Mapa nombre del secreto compartido => version_id (cambia cuando cambia su valor; entrada del hash del Job de siembra)."
+  value       = { for k, v in aws_secretsmanager_secret_version.shared : k => v.version_id }
+}
+
 output "cache_secret_name" {
   description = "Nombre del secreto de caché (solo referencia)."
   value       = aws_secretsmanager_secret.cache.name

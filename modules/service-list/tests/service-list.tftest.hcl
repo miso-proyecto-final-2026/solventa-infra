@@ -982,3 +982,117 @@ run "v15_invalid_internal_path" {
 
   expect_failures = [var.config]
 }
+
+# V16: siembra de datos con secretos propios del Job.
+run "v16_seed_secrets_are_listed_as_shared_secrets" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-identidad"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas             = { min = 2, max = 2 }
+          secret_env_vars      = { SERVICE_API_KEYS = "solventa/staging/identidad-service-key" }
+          seed_command         = ["python", "seed.py"]
+          seed_secret_env_vars = { ASESORES_PASSWORD = "solventa/staging/asesores-password" }
+        },
+      ]
+    }
+  }
+
+  assert {
+    condition     = contains(output.shared_secret_names, "solventa/staging/asesores-password") && contains(output.shared_secret_names, "solventa/staging/identidad-service-key")
+    error_message = "shared_secret_names must include the seed secrets so service-secrets creates them."
+  }
+
+  assert {
+    condition     = output.services["solventa-identidad"].seed_command == tolist(["python", "seed.py"])
+    error_message = "The normalized service must carry seed_command."
+  }
+}
+
+run "v16_seed_secrets_need_a_seed_command" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-identidad"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas             = { min = 2, max = 2 }
+          seed_secret_env_vars = { ASESORES_PASSWORD = "solventa/staging/asesores-password" }
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "v16_seed_secret_outside_the_prefix" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-identidad"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas             = { min = 2, max = 2 }
+          seed_command         = ["python", "seed.py"]
+          seed_secret_env_vars = { ASESORES_PASSWORD = "otro/prefijo/asesores-password" }
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}
+
+run "v16_seed_secret_collides_with_a_shared_secret_variable" {
+  command = plan
+
+  variables {
+    config = {
+      services = [
+        {
+          name        = "solventa-identidad"
+          image_tag   = "x"
+          port        = 80
+          health_path = "/health"
+          resources = {
+            requests = { cpu = "1m", memory = "1Mi" }
+            limits   = { cpu = "1m", memory = "1Mi" }
+          }
+          replicas             = { min = 2, max = 2 }
+          secret_env_vars      = { ASESORES_PASSWORD = "solventa/staging/otra" }
+          seed_command         = ["python", "seed.py"]
+          seed_secret_env_vars = { ASESORES_PASSWORD = "solventa/staging/asesores-password" }
+        },
+      ]
+    }
+  }
+
+  expect_failures = [var.config]
+}

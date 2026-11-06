@@ -80,3 +80,28 @@ run "no_shared_secrets_by_default" {
     error_message = "Without shared_secret_names no extra secret must be created."
   }
 }
+
+run "shared_secret_length_and_fixed_value_can_be_set" {
+  command = plan
+
+  variables {
+    shared_secret_names   = ["solventa/staging/demo-clave", "solventa/staging/identidad-service-key"]
+    shared_secret_lengths = { "solventa/staging/demo-clave" = 16 }
+    shared_secret_values  = { "solventa/staging/demo-clave" = "valor-fijo-de-prueba" }
+  }
+
+  assert {
+    condition     = random_password.shared["solventa/staging/demo-clave"].length == 16 && random_password.shared["solventa/staging/identidad-service-key"].length == 48
+    error_message = "Only the secret listed in shared_secret_lengths changes length; the rest keep 48."
+  }
+
+  assert {
+    condition     = random_password.shared["solventa/staging/demo-clave"].special == false
+    error_message = "The demo password must stay alphanumeric so it is easy to dictate."
+  }
+
+  assert {
+    condition     = jsondecode(aws_secretsmanager_secret_version.shared["solventa/staging/demo-clave"].secret_string).value == "valor-fijo-de-prueba"
+    error_message = "A value in shared_secret_values must replace the generated one."
+  }
+}
