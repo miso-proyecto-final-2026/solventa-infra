@@ -79,10 +79,19 @@ services:
     owned_schemas: [identidad]
     database_env_vars: [DATABASE_URL]
     cache_env_var: ""                 # Identidad no usa Redis
+    settings:
+      # Salvaguarda del Job de siembra: solo corre en staging. Con ACTUALIZAR_CLAVE, la clave de Secrets Manager manda.
+      ENTORNO: staging
+      ASESORES_ACTUALIZAR_CLAVE: "1"
     secret_env_vars:
       SERVICE_API_KEYS: solventa/staging/identidad-service-key
       ASESOR_JWT_SECRETO: solventa/staging/asesor-jwt-secreto   # el mismo que valida MS Cotización
     migration_command: [alembic, upgrade, head]
+    # Siembra de los 5 asesores del demo (asesor1..asesor5@solventa.test): Job tras la migración y antes del Deployment.
+    # La clave vive en Secrets Manager y solo la ve el Job; se fija con TF_VAR_asesores_password (README de infra).
+    seed_command: [python, scripts/sembrar_asesores_staging.py]
+    seed_secret_env_vars:
+      ASESORES_PASSWORD: solventa/staging/asesores-password
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
     edge:

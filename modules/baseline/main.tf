@@ -75,6 +75,8 @@ module "workload" {
   db_sslmode        = var.db.sslmode
   cache             = var.cache
 
+  seed_secret_versions = var.shared_secret_versions
+
   # El Job db-access crea el rol y los esquemas antes de que corra la migración; los topics existen antes de arrancar.
   depends_on = [module.db_access, module.kafka_topics]
 }

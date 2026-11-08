@@ -465,3 +465,23 @@ run "sender_must_be_an_email_address" {
 
   expect_failures = [var.correo_remitente]
 }
+
+# La clave compartida de los asesores del demo: se crea como secreto compartido y exige 8 caracteres si se fija a mano.
+run "asesores_secret_is_declared_by_the_identity_service" {
+  command = plan
+
+  assert {
+    condition     = contains(module.service_list.shared_secret_names, "solventa/staging/asesores-password")
+    error_message = "services.yaml must declare solventa/staging/asesores-password in seed_secret_env_vars of solventa-identidad."
+  }
+}
+
+run "asesores_password_must_have_at_least_8_characters" {
+  command = plan
+
+  variables {
+    asesores_password = "corta"
+  }
+
+  expect_failures = [var.asesores_password]
+}

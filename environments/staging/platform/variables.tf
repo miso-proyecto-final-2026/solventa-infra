@@ -1,3 +1,18 @@
+variable "asesores_password" {
+  description = <<-EOT
+    Clave compartida de los asesores sembrados en staging (login del demo). Se pasa con TF_VAR_asesores_password; no se
+    guarda en git. Con null, Secrets Manager genera una aleatoria de 16 caracteres. Mínimo 8 caracteres.
+  EOT
+  type        = string
+  default     = null
+  sensitive   = true
+
+  validation {
+    condition     = var.asesores_password == null ? true : length(var.asesores_password) >= 8
+    error_message = "asesores_password must have at least 8 characters, or be null for a generated one."
+  }
+}
+
 variable "region" {
   description = "Región AWS."
   type        = string

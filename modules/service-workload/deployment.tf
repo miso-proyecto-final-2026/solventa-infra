@@ -129,8 +129,8 @@ resource "kubernetes_deployment_v1" "this" {
     ]
   }
 
-  # FR-025: la migración termina antes de crear o cambiar la carga.
-  depends_on = [kubernetes_job_v1.migrate, kubectl_manifest.connection, kubernetes_config_map_v1.settings]
+  # FR-025: la migración y la siembra (si el servicio la declara) terminan antes de crear o cambiar la carga.
+  depends_on = [kubernetes_job_v1.migrate, kubernetes_job_v1.seed, kubectl_manifest.connection, kubernetes_config_map_v1.settings]
 }
 
 # Nunca LoadBalancer: el clúster no crea balanceadores que puedan bloquear el teardown (research R11).
