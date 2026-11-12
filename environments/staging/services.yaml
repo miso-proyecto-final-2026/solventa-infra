@@ -246,9 +246,11 @@ services:
     # Consume el comando de cobro de la saga en el grupo `solventa-pagos.cobros` y publica el resultado por su cola
     # de salida. La plataforma le inyecta KAFKA_BOOTSTRAP_SERVERS y AWS_DEFAULT_REGION. HU19: avisa al operador de los
     # cobros con la gracia vencida por `solventa.notificaciones`; sin ese permiso la cola de salida se detiene (publica en orden).
+    # HU29: consume `indemnizacion_solicitada` de `solventa.siniestros.comandos` en el grupo `solventa-pagos.indemnizaciones` y
+    # publica `indemnizacion_pagada` / `indemnizacion_fallida` en `solventa.pagos.indemnizaciones` por la misma cola de salida.
     eventos:
-      produce: [solventa.pagos.resultados, solventa.notificaciones]
-      consume: [solventa.suscripcion.comandos]
+      produce: [solventa.pagos.resultados, solventa.notificaciones, solventa.pagos.indemnizaciones]
+      consume: [solventa.suscripcion.comandos, solventa.siniestros.comandos]
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
