@@ -361,10 +361,10 @@ run "events_create_topics_and_inject_the_brokers" {
 
   assert {
     condition = (
-      toset(module.service_list.events_access["solventa-pagos"].produce) == toset(["solventa.pagos.resultados", "solventa.notificaciones"]) &&
-      toset(module.service_list.events_access["solventa-pagos"].consume) == toset(["solventa.suscripcion.comandos"])
+      toset(module.service_list.events_access["solventa-pagos"].produce) == toset(["solventa.pagos.resultados", "solventa.notificaciones", "solventa.pagos.indemnizaciones"]) &&
+      toset(module.service_list.events_access["solventa-pagos"].consume) == toset(["solventa.suscripcion.comandos", "solventa.siniestros.comandos"])
     )
-    error_message = "HU18/HU19: solventa-pagos consume el comando de cobro y publica el resultado y el aviso de gracia vencida."
+    error_message = "HU18/HU19/HU29: solventa-pagos consume el comando de cobro y el de indemnización, y publica el resultado del cobro, el aviso de gracia vencida y el resultado de la indemnización."
   }
 
   # HU19: Pagos valida el token del asesor u operador con el mismo secreto con que Identidad lo firma.
