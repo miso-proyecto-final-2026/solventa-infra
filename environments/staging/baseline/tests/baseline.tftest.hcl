@@ -373,13 +373,14 @@ run "events_create_topics_and_inject_the_brokers" {
     error_message = "HU19: solventa-pagos debe leer ASESOR_JWT_SECRETO del mismo secreto que solventa-identidad."
   }
 
-  # HU19: del borde, Pagos publica solo la gestión de cobros fallidos; cobrar, tokenizar y consultar siguen internos.
+  # HU19 y HU31: del borde, Pagos publica solo la gestión de cobros fallidos y la conciliación de desembolsos; cobrar,
+  # tokenizar y consultar siguen internos.
   assert {
     condition = (
-      tolist(local.services["solventa-pagos"].edge.path_prefixes) == tolist(["/v1/pagos/cobros-fallidos"]) &&
+      tolist(local.services["solventa-pagos"].edge.path_prefixes) == tolist(["/v1/pagos/cobros-fallidos", "/v1/pagos/conciliacion"]) &&
       alltrue([for p in ["/v1/pagos/cobros", "/v1/pagos/tokenizar", "/v1/pagos/transacciones"] : contains(local.services["solventa-pagos"].internal_path_prefixes, p)])
     )
-    error_message = "HU19: solventa-pagos publica solo /v1/pagos/cobros-fallidos y declara internas /cobros, /tokenizar y /transacciones."
+    error_message = "HU19/HU31: solventa-pagos publica solo /v1/pagos/cobros-fallidos y /v1/pagos/conciliacion, y declara internas /cobros, /tokenizar y /transacciones."
   }
 
   assert {

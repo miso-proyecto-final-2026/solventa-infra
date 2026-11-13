@@ -254,12 +254,14 @@ services:
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
-    # Borde público (HU19, enmienda del ADR-0014): SOLO la gestión de cobros fallidos de la consola web, con el JWT del
-    # asesor u operador. No recibe datos de tarjeta ni devuelve el token. El API Gateway crea `ANY <prefijo>` y
-    # `ANY <prefijo>/{proxy+}`, así que `/v1/pagos/cobros` no queda cubierto por `/v1/pagos/cobros-fallidos`.
+    # Borde público (HU19, enmienda del ADR-0014): la gestión de cobros fallidos de la consola web, con el JWT del
+    # asesor u operador, y (HU31) la conciliación de desembolsos de indemnizaciones, solo para el rol OPERADOR (ADR-0023).
+    # Ninguna recibe datos de tarjeta ni devuelve el token: el cliente sale enmascarado y nunca la cuenta de destino. El API
+    # Gateway crea `ANY <prefijo>` y `ANY <prefijo>/{proxy+}`, así que `/v1/pagos/cobros` no queda cubierto por
+    # `/v1/pagos/cobros-fallidos`.
     edge:
       node_port: 30084
-      path_prefixes: [/v1/pagos/cobros-fallidos]
+      path_prefixes: [/v1/pagos/cobros-fallidos, /v1/pagos/conciliacion]
     # Rutas que manejan tokens de pago: siguen internas (otros servicios, o una persona por túnel con la clave; SAQ-A,
     # EC-S2.1). La validación V15 impide que algún borde las publique, aunque sea con un prefijo más corto.
     internal_path_prefixes: [/v1/pagos/cobros, /v1/pagos/tokenizar, /v1/pagos/transacciones]
