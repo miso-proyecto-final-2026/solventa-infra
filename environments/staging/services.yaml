@@ -48,6 +48,9 @@ services:
       # Cotización consulta el consentimiento a MS Identidad por REST síncrono (ADR-0002); el Service es ClusterIP en el puerto 80.
       IDENTIDAD_URL: http://solventa-identidad
       IDENTIDAD_TIMEOUT_S: "0.3"
+      # HU24: linaje del perfil para el asesor; Cotización hace de fachada hacia MS Perfilamiento (Service ClusterIP, puerto 80).
+      # Sin esta URL o sin PERFILAMIENTO_SERVICE_KEY, Cotización arranca igual y el linaje responde 503 (HA01).
+      PERFILAMIENTO_URL: http://solventa-perfilamiento
     # Misma clave que Identidad acepta en SERVICE_API_KEYS; nace en Secrets Manager, nunca en git.
     secret_env_vars:
       IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
@@ -58,6 +61,10 @@ services:
       # con la cabecera X-Service-Key. Sin ella esos endpoints responden 403 (falla cerrado).
       # Provisional hasta los roles internos (F26). Se lee de Secrets Manager; nunca vive en git.
       AUDITOR_API_KEYS: solventa/staging/auditor-api-key
+      # HU24: clave PROPIA de Cotización ante Perfilamiento (no la de Suscripción), para que su auditoría de consultas del
+      # linaje registre el origen «cotizacion». Perfilamiento la acepta en PERFILAMIENTO_API_KEY_COTIZACION. A diferencia
+      # de ASESOR_JWT_SECRETO, sin ella Cotización arranca igual: solo el linaje del asesor responde 503 (HA01).
+      PERFILAMIENTO_SERVICE_KEY: solventa/staging/perfilamiento-api-key-cotizacion
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend
@@ -121,6 +128,9 @@ services:
       # Claves de los servicios que llaman a Perfilamiento (X-Service-Key). Vacía = nadie accede.
       # Una clave sin nombre queda con el origen «servicio» en los intentos bloqueados.
       PERFILAMIENTO_API_KEYS: solventa/staging/perfilamiento-api-key
+      # HU24: una variable por llamador (cada secreto es una sola cadena); el sufijo, en minúsculas, es el origen que
+      # queda en la auditoría. La de Cotización la comparte con su PERFILAMIENTO_SERVICE_KEY.
+      PERFILAMIENTO_API_KEY_COTIZACION: solventa/staging/perfilamiento-api-key-cotizacion
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
