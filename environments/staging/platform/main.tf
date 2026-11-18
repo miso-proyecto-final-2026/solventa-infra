@@ -28,7 +28,13 @@ locals {
 
   # Servicios con exposición pública (campo `edge` de services.yaml).
   edge_services = { for name, s in module.service_list.services : name => s if s.edge != null }
-  edge_enabled  = var.enable_edge && length(local.edge_services) > 0
+
+  # Prefijos públicos que no caen en el comportamiento /v1/* de CloudFront (HU32: /partners y /oauth/token). Cada uno
+  # necesita el suyo hacia el API Gateway; sin él irían al bucket de la consola web.
+  edge_api_path_patterns_fuera_de_v1 = sort(distinct(flatten([
+    for name, s in local.edge_services : [for p in s.edge.path_prefixes : "${p}*" if !startswith(p, "/v1/")]
+  ])))
+  edge_enabled = var.enable_edge && length(local.edge_services) > 0
 
   # Grafana (observabilidad) entra por el mismo borde que los servicios, bajo /grafana y detrás de su propio login.
   # Solo existe con borde; el Service NodePort lo crea la etapa baseline.
@@ -349,8 +355,9 @@ module "cloudfront" {
   # Las consultas de Grafana (LogQL, PromQL) parecen inyección al WAF: su ruta queda exenta de SQLi/XSS, no del límite por IP.
   inspection_exempt_path_regex = local.grafana_edge_enabled ? "^/grafana(/.*)?$" : ""
 
-  # Con la consola web, el origen por defecto es el bucket: /grafana* debe ir al API Gateway sin caché.
-  extra_api_path_patterns = local.grafana_edge_enabled ? ["/grafana*"] : []
+  # Con la consola web, el origen por defecto es el bucket: /grafana* y los prefijos del borde fuera de /v1/* (la API de
+  # socios, HU32) deben ir al API Gateway sin caché.
+  extra_api_path_patterns = concat(local.grafana_edge_enabled ? ["/grafana*"] : [], local.edge_api_path_patterns_fuera_de_v1)
 
   tags = local.tags
 }
