@@ -293,10 +293,11 @@ services:
       SUSCRIPCION_SERVICE_KEY: solventa/staging/suscripcion-service-key
       # Token del operador (ADR-0008) con el que se ven los envíos fallidos; el mismo secreto con el que Identidad lo firma.
       ASESOR_JWT_SECRETO: solventa/staging/asesor-jwt-secreto
-    # Consume `poliza_emitida` en el grupo `solventa-notificaciones.polizas` (debe empezar por el nombre del servicio).
-    # Reentrega los mensajes que no puede procesar a `solventa.polizas.ciclovida.dlq`. No publica eventos.
+    # Consume `poliza_emitida` en el grupo `solventa-notificaciones.polizas` (debe empezar por el nombre del servicio) y,
+    # desde HU30, `indemnizacion_pagada` de `solventa.pagos.indemnizaciones` en el grupo `solventa-notificaciones.pagos`.
+    # Reentrega los mensajes que no puede procesar a `<topic>.dlq`. No publica eventos.
     eventos:
-      consume: [solventa.polizas.ciclovida]
+      consume: [solventa.polizas.ciclovida, solventa.pagos.indemnizaciones]
     migration_command: [alembic, upgrade, head]
     run_as_non_root: false
     deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
