@@ -324,9 +324,17 @@ services:
     settings:
       # Fachada síncrona hacia Cotización (ADR-0002): el Service de Cotización es `solventa-backend`, ClusterIP en el puerto 80.
       COTIZACION_URL: http://solventa-backend
+      # Venta embebida (HU33, ADR-0026 del backend): Identidad identifica al cliente por documento y Suscripción lleva la saga,
+      # la firma y la póliza. REST síncrono (ADR-0002); los Service son ClusterIP en el puerto 80.
+      IDENTIDAD_URL: http://solventa-identidad
+      SUSCRIPCION_URL: http://solventa-suscripcion
     secret_env_vars:
       # Firma los tokens OAuth2 de los socios (JWT HS256 de 1 hora). Propio de Socios: no es el secreto del asesor.
       SOCIOS_JWT_SECRETO: solventa/staging/socios-jwt-secreto
+      # La misma clave que Identidad acepta en SERVICE_API_KEYS: identifica al cliente del socio (HU33).
+      IDENTIDAD_SERVICE_KEY: solventa/staging/identidad-service-key
+      # La que Suscripción acepta en SUSCRIPCION_SERVICE_KEYS (la comparte con Notificaciones): inicia y firma la venta (HU33).
+      SUSCRIPCION_SERVICE_KEY: solventa/staging/suscripcion-service-key
     migration_command: [alembic, upgrade, head]
     # Siembra del socio de prueba (no hay portal de registro): Job tras la migración y antes del Deployment. El secreto nace
     # aleatorio en Secrets Manager, solo lo ve el Job y en la base queda su hash. El script de ejemplo lo lee de ahí.
