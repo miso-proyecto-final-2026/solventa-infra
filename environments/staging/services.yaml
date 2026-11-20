@@ -1,6 +1,6 @@
 # Lista única de microservicios (contrato C1). La leen bootstrap, platform y baseline.
-# Esquemas reservados para microservicios futuros (sin dueño, sin permisos).
-reserved_schemas: [socios]
+# Esquemas reservados para microservicios futuros (sin dueño, sin permisos). Socios ya tiene dueño (HU32).
+reserved_schemas: []
 
 # Solo se eliminan si están aquí Y no tienen dueño. Vacío por defecto.
 drop_schemas: []
@@ -306,3 +306,38 @@ services:
     edge:
       node_port: 30085
       path_prefixes: [/v1/dispositivos, /v1/notificaciones]
+
+  - name: solventa-socios             # MS Socios (HU32): API para socios de distribución (ADR-0025); esquema propio `socios`
+    image_tag: "0000000"              # tag inicial; sustituir por el SHA publicado antes del baseline
+    port: 8000
+    health_path: /health
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 512Mi }
+    replicas: { min: 2, max: 6 }
+    autoscaling: { cpu_target_percent: 70 }
+    owned_schemas: [socios]           # clientes_api y contratos_api; sin datos de negocio (ADR-0001)
+    database_env_vars: [DATABASE_URL]  # el servicio acepta DATABASE_URL como alternativa a SOCIOS_DATABASE_URL
+    # Cuota por socio e idempotencia (ADR-0025): compartidas entre réplicas en Redis. El borde (API Gateway HTTP) no tiene
+    # planes de uso por cliente, así que el 429 con Retry-After lo da el servicio.
+    cache_env_var: REDIS_URL
+    settings:
+      # Fachada síncrona hacia Cotización (ADR-0002): el Service de Cotización es `solventa-backend`, ClusterIP en el puerto 80.
+      COTIZACION_URL: http://solventa-backend
+    secret_env_vars:
+      # Firma los tokens OAuth2 de los socios (JWT HS256 de 1 hora). Propio de Socios: no es el secreto del asesor.
+      SOCIOS_JWT_SECRETO: solventa/staging/socios-jwt-secreto
+    migration_command: [alembic, upgrade, head]
+    # Siembra del socio de prueba (no hay portal de registro): Job tras la migración y antes del Deployment. El secreto nace
+    # aleatorio en Secrets Manager, solo lo ve el Job y en la base queda su hash. El script de ejemplo lo lee de ahí.
+    seed_command: [python, scripts/sembrar_socio_demo.py]
+    seed_secret_env_vars:
+      SOCIO_DEMO_CLIENT_SECRET: solventa/staging/socio-demo-client-secret
+    run_as_non_root: false
+    deploy_repository: miso-proyecto-final-2026/solventa-backend   # monorepo: un repo, un servicio por carpeta
+    # Borde público: el token OAuth2 y la API versionada de socios. Quedan fuera de /v1/*, así que platform les crea su
+    # propio comportamiento en CloudFront. /health no se publica (V13). El WAF sigue limitando por IP (1000 cada 5 min):
+    # una ráfaga dentro de la cuota del contrato pasa; un socio con tráfico sostenido mayor necesitará su propia regla.
+    edge:
+      node_port: 30087
+      path_prefixes: [/partners, /oauth/token]

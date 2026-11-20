@@ -30,6 +30,7 @@ override_data {
         "solventa-siniestros"     = "solventa/staging/solventa-siniestros/db"
         "solventa-pagos"          = "solventa/staging/solventa-pagos/db"
         "solventa-notificaciones" = "solventa/staging/solventa-notificaciones/db"
+        "solventa-socios"         = "solventa/staging/solventa-socios/db"
       }
       service_db_secret_versions = {
         "solventa-backend"        = "11111111-2222-3333-4444-555555555555"
@@ -39,6 +40,7 @@ override_data {
         "solventa-siniestros"     = "cccccccc-dddd-eeee-ffff-000000000000"
         "solventa-pagos"          = "dddddddd-eeee-ffff-0000-111111111111"
         "solventa-notificaciones" = "eeeeeeee-ffff-0000-1111-222222222222"
+        "solventa-socios"         = "ffffffff-0000-1111-2222-333333333333"
       }
     }
   }
@@ -54,6 +56,7 @@ variables {
     "solventa-siniestros"     = "abc1234"
     "solventa-pagos"          = "abc1234"
     "solventa-notificaciones" = "abc1234"
+    "solventa-socios"         = "abc1234"
   }
 }
 
@@ -104,6 +107,13 @@ run "plan_produces_the_full_workload_set" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-notificaciones"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-socios"]
     values = {
       image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
     }
@@ -174,6 +184,17 @@ run "plan_produces_the_full_workload_set" {
     error_message = "RULE edge-nodeport: solventa-notificaciones must get its edge NodePort (30085)."
   }
 
+  # HU32: Socios tiene su Deployment, su migración y el Job que siembra el socio de prueba, y se publica por el borde.
+  assert {
+    condition     = output.deployments["solventa-socios"] == "solventa-socios" && startswith(output.migration_jobs["solventa-socios"], "solventa-socios-migrate-")
+    error_message = "The baseline must create the solventa-socios Deployment and its migration Job."
+  }
+
+  assert {
+    condition     = output.edge_node_ports["solventa-socios"] == 30087
+    error_message = "RULE edge-nodeport: solventa-socios must get its edge NodePort (30087) for the partners API (HU32)."
+  }
+
   assert {
     condition     = startswith(output.db_access_job, "db-access-")
     error_message = "The baseline must run the db-access Job."
@@ -239,6 +260,13 @@ run "missing_image_fails_before_any_workload" {
     }
   }
 
+  override_data {
+    target = data.aws_ecr_images.service["solventa-socios"]
+    values = {
+      image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }]
+    }
+  }
+
   expect_failures = [terraform_data.image_check["solventa-backend"]]
 }
 
@@ -285,6 +313,7 @@ run "events_create_topics_and_inject_the_brokers" {
           "solventa-siniestros"     = "solventa/staging/solventa-siniestros/db"
           "solventa-pagos"          = "solventa/staging/solventa-pagos/db"
           "solventa-notificaciones" = "solventa/staging/solventa-notificaciones/db"
+          "solventa-socios"         = "solventa/staging/solventa-socios/db"
         }
         service_db_secret_versions = {
           "solventa-backend"        = "11111111-2222-3333-4444-555555555555"
@@ -294,6 +323,7 @@ run "events_create_topics_and_inject_the_brokers" {
           "solventa-siniestros"     = "cccccccc-dddd-eeee-ffff-000000000000"
           "solventa-pagos"          = "dddddddd-eeee-ffff-0000-111111111111"
           "solventa-notificaciones" = "eeeeeeee-ffff-0000-1111-222222222222"
+          "solventa-socios"         = "ffffffff-0000-1111-2222-333333333333"
         }
       }
     }
@@ -331,6 +361,11 @@ run "events_create_topics_and_inject_the_brokers" {
 
   override_data {
     target = data.aws_ecr_images.service["solventa-notificaciones"]
+    values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
+  }
+
+  override_data {
+    target = data.aws_ecr_images.service["solventa-socios"]
     values = { image_ids = [{ image_tag = "abc1234", image_digest = "sha256:0000" }] }
   }
 

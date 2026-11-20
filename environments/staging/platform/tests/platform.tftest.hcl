@@ -189,13 +189,20 @@ run "edge_follows_the_architecture_path" {
   }
 
   assert {
-    condition     = length(module.nlb[0].listener_arns) == 8
-    error_message = "RULE edge-services: the seven services with `edge` (backend, identidad, suscripcion, siniestros, pagos, notificaciones and perfilamiento, which is temporary: see the TODO in services.yaml) and Grafana must be exposed through the NLB."
+    condition     = length(module.nlb[0].listener_arns) == 9
+    error_message = "RULE edge-services: the eight services with `edge` (backend, identidad, suscripcion, siniestros, pagos, notificaciones, socios and perfilamiento, which is temporary: see the TODO in services.yaml) and Grafana must be exposed through the NLB."
   }
 
   assert {
-    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad", "solventa-suscripcion", "solventa-siniestros", "solventa-pagos", "solventa-notificaciones", "solventa-perfilamiento"] : contains(keys(module.nlb[0].listener_arns), k)])
+    condition     = alltrue([for k in ["solventa-backend", "solventa-identidad", "solventa-suscripcion", "solventa-siniestros", "solventa-pagos", "solventa-notificaciones", "solventa-perfilamiento", "solventa-socios"] : contains(keys(module.nlb[0].listener_arns), k)])
     error_message = "RULE edge-wiring: each exposed service must have its own NLB listener."
+  }
+
+  # HU32: la API de socios vive fuera de /v1/* (/partners y /oauth/token). Con la consola web como origen por defecto,
+  # sin su propio comportamiento en CloudFront esas rutas irían al bucket y no al API Gateway.
+  assert {
+    condition     = toset(local.edge_api_path_patterns_fuera_de_v1) == toset(["/oauth/token*", "/partners*"])
+    error_message = "RULE edge-partners-paths: every public prefix outside /v1/* gets its own CloudFront behavior towards the API Gateway."
   }
 }
 

@@ -41,6 +41,8 @@ jobs:
       - name: terraform validate
         run: terraform -chdir=${{ matrix.dir }} validate
       - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           tflint --init --config="$GITHUB_WORKSPACE/.tflint.hcl"
           tflint --config="$GITHUB_WORKSPACE/.tflint.hcl" --chdir=${{ matrix.dir }}
