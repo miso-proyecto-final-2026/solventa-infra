@@ -327,6 +327,8 @@ curl -s -H "X-Service-Key: $KEY" localhost:8002/v1/perfilamiento/smoke-1/linaje 
 
 En Postman basta apuntar `perfilamiento_url` a `http://localhost:8002` mientras dure el túnel.
 
+**Linaje para el asesor (HU24).** La consola consulta el linaje por `GET /v1/asesor/clientes/{id}/linaje` en Cotización (`solventa-backend`), que llama por dentro a Perfilamiento (`PERFILAMIENTO_URL`) con una clave **propia**: `solventa/staging/perfilamiento-api-key-cotizacion`, que Cotización lee en `PERFILAMIENTO_SERVICE_KEY` y Perfilamiento acepta en `PERFILAMIENTO_API_KEY_COTIZACION` (el sufijo, en minúsculas, es el origen que queda en la auditoría de consultas). No reutiliza la de Suscripción. Si falta esa configuración, Cotización arranca igual y el linaje responde 503.
+
 **MS Siniestros (HU27)** sí se publica por el borde (`/v1/siniestros`, NodePort 30083, `high_volume`): el proveedor de eventos es externo. Recibe `KAFKA_BOOTSTRAP_SERVERS` y `AWS_DEFAULT_REGION` de `baseline` (el cliente de eventos firma el token SASL/IAM con la región), tiene permisos solo sobre `solventa.siniestros.eventos` y el grupo `solventa-siniestros.recepcion`, y su llave sale de `solventa/staging/siniestros-api-key` (valor aleatorio sin nombre: el servicio la asocia a la fuente `proveedor-simulado`). Prueba por el borde, con staging encendido y el servicio desplegado:
 
 ```sh

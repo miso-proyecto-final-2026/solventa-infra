@@ -408,6 +408,17 @@ run "events_create_topics_and_inject_the_brokers" {
     error_message = "HU19: solventa-pagos debe leer ASESOR_JWT_SECRETO del mismo secreto que solventa-identidad."
   }
 
+  # HU24: Cotización consulta el linaje a Perfilamiento con su PROPIA clave (no la de Suscripción), y Perfilamiento la
+  # acepta con nombre para que la auditoría registre el origen «cotizacion».
+  assert {
+    condition = (
+      local.services["solventa-backend"].settings["PERFILAMIENTO_URL"] == "http://solventa-perfilamiento" &&
+      local.services["solventa-backend"].secret_env_vars["PERFILAMIENTO_SERVICE_KEY"] == local.services["solventa-perfilamiento"].secret_env_vars["PERFILAMIENTO_API_KEY_COTIZACION"] &&
+      local.services["solventa-backend"].secret_env_vars["PERFILAMIENTO_SERVICE_KEY"] != local.services["solventa-suscripcion"].secret_env_vars["PERFILAMIENTO_SERVICE_KEY"]
+    )
+    error_message = "HU24: solventa-backend (Cotización) debe llegar a Perfilamiento con un secreto propio, el mismo que Perfilamiento lee en PERFILAMIENTO_API_KEY_COTIZACION y distinto del de Suscripción."
+  }
+
   # HU19 y HU31: del borde, Pagos publica solo la gestión de cobros fallidos y la conciliación de desembolsos; cobrar,
   # tokenizar y consultar siguen internos.
   assert {
